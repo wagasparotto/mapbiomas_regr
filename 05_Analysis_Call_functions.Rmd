@@ -1,0 +1,690 @@
+---
+title: "EDA_functions"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# ADICIONANDO SETS DE REGRESSÃO - SEM PADRONIZAÇÃO
+# GERAÇÃO DOS DADOS PARA APENAS ALGUNS DOS SETS DE REGRESSÃO 
+```{r}
+
+add <- regrXX # sequiser rodar tudo
+
+add <- c("Regr_24", "Regr_25") # mudar/acrescentar nomes para o(s) número(s) do(s) set(s) que se deseja obter os objetos
+
+for (r in add) {
+
+# cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX[[r]] <- create.db.regr(r) # implícito std = FALSE
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models[[r]] <- stepwise.model(db.regrXX[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series[[r]] <- table.series(r, regrXX.step.models[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot[[r]] <- create.db.plot(regrXX.step.models[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots[[r]] <- plot.yyhat(r ,regrXX.db.plot[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_",Sys.Date(),".jpg"
+    ))
+
+} # fim do FOR
+  
+```
+
+# ADICIONANDO SETS DE REGRESSÃO - COM PADRONIZAÇÃO
+# Geração de regressões, tabelas e gráficos para TODAS as "Regr_XX" (colunas da tabela 'list.pred')
+```{r}
+
+add <- regrXX # sequiser rodar tudo
+
+add <- c("Regr_24", "Regr_25") # mudar/acrescentar nomes para o(s) número(s) do(s) set(s) que se deseja obter os objetos
+
+for (r in add) {
+  
+  # cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX.std[[r]] <- create.db.regr(r, std = TRUE)
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models.std[[r]] <- stepwise.model(db.regrXX.std[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series.std[[r]] <- table.series(r, regrXX.step.models.std[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_std_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot.std[[r]] <- create.db.plot(regrXX.step.models.std[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots.std[[r]] <- plot.yyhat(r ,regrXX.db.plot.std[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_std_",Sys.Date(),".jpg"
+    ))
+
+}
+
+#plot(regrXX.plots[[r]])
+
+```
+
+# Rodando os modelos lm para todas as regressões (com e sem padronização)
+```{r}
+
+regrXX.lm.models <- list()
+regrXX.lm.models.std <- list()
+
+r <- NULL
+for (r in regrXX) {
+  regrXX.lm.models[[r]] <- lm.model(db.regrXX[[r]])
+  regrXX.lm.models.std[[r]] <- lm.model(db.regrXX.std[[r]])
+}
+
+# regrXX.lm.models$ # conferindo se rodou pra tudo
+#regrXX.lm.models.std$
+
+```
+
+
+# POR CLUSTER:
+# Chamando as funções e armazenando/salvando arquivos
+```{r}
+
+# salva as tabelas dos sets de regressão segundo a ordem dos clusters no agrup. hier.
+regrXX.table.series.order <- order.table.series()
+
+# banco de dados que contém o número e ordem dos clusters, para usar nos plots
+regrXX.db.plot.order <- add.clus.db.plot()
+
+# ggplots com facet na ordem dos estados segundo agrup. hier.
+regrXX.plots.order <- plot.yyhat.order()
+#regrXX.plots.order$Regr_01
+
+# ggplots por set de regressão e por ordem de cluster (não por número do cluster!)
+regrXX.plots.by.clus <- plot.yyhat.by.clus()
+
+regrXX.plots.by.clus$Regr_01[[1]]
+
+```
+
+
+####################################################################
+########## CHAMANDO FUNÇÕES DOS SUMÁRIOS PARA VÁRIOS SETS ##########
+####################################################################
+
+# SUMÁRIO-COEFICIENTES E EDA DAS PREDITORAS
+# Chamando as novas funções de sumário e coeficientes
+```{r}
+
+regrXX.lm.summ <- list()
+regrXX.lm.std.summ <- list()
+
+regrXX.step.summ <- list()
+regrXX.step.std.summ <- list()
+
+regrXX.lm.coef <- list()
+regrXX.lm.coef.std <- list()
+
+regrXX.step.coef <- list()
+regrXX.step.coef.std <- list()
+
+regrXX.lm.table <- list()
+regrXX.lm.std.table <- list()
+
+regrXX.step.table <- list()
+regrXX.step.std.table <- list()
+
+add <- regrXX
+add <- c("Regr_25")
+add <- c(paste0("Regr_",seq(116,123,1)))
+
+#r <- NULL
+for (r in add) {
+  
+  #regrXX.lm.summ[[r]] <- table.summ(regrXX.lm.models[[r]])
+  #regrXX.lm.std.summ[[r]] <- table.summ(regrXX.lm.models.std[[r]])
+  
+  regrXX.step.summ[[r]] <- table.summ(regrXX.step.models[[r]])
+  regrXX.step.std.summ[[r]] <- table.summ(regrXX.step.models.std[[r]])
+  
+  #regrXX.lm.coef[[r]] <- table.coef(regrXX.lm.summ[[r]])
+  #regrXX.lm.coef.std[[r]] <- table.coef(regrXX.lm.std.summ[[r]])
+  
+  regrXX.step.coef[[r]] <- table.coef(regrXX.step.summ[[r]])
+  regrXX.step.coef.std[[r]] <- table.coef(regrXX.step.std.summ[[r]])
+  
+  
+  
+  #print("CHAMANDO FUNÇÕES TABLE.MODEL")
+  #regrXX.lm.table[[r]] <- table.model(r, 
+  #                                    model = regrXX.lm.models[[r]], 
+  #                                    summ = regrXX.lm.summ[[r]], 
+  #                                    coef = regrXX.lm.coef[[r]])
+  #
+  #print("STD")
+  #regrXX.lm.std.table[[r]] <- table.model(r, 
+  #                                        model = regrXX.lm.models.std[[r]], 
+  #                                        summ = regrXX.lm.std.summ[[r]], 
+  #                                        coef = regrXX.lm.coef.std[[r]])
+  
+  print("STEP")
+  regrXX.step.table[[r]] <- table.model(r, 
+                                        model = regrXX.step.models[[r]], 
+                                        summ = regrXX.step.summ[[r]], 
+                                        coef = regrXX.step.coef[[r]])
+  
+  print("STEP STD")
+  regrXX.step.std.table[[r]] <- table.model(r, 
+                                            model = regrXX.step.models.std[[r]],
+                                            summ = regrXX.step.std.summ[[r]],
+                                            coef = regrXX.step.coef.std[[r]])
+  
+  
+} # fim do FOR dos sets de regressão
+
+
+#regrXX.lm.summ$Regr_01$AC$
+
+# consultando uma das tabelas
+#regrXX.step.table$Regr_24
+
+
+#### TESTES PARA CHAMAR AS FUNÇÕES
+
+#teste.summ <- table.summ(regrXX.step.models$Regr_01)
+#
+##summary(regrXX.step.models$Regr_01$AC)
+##anova(regrXX.step.models$Regr_01$AC)
+##teste.print <- print(teste.summ$AC)
+##teste.summ$AC$r.squared
+##teste.summ$AC$adj.r.squared
+##teste.summ$AC$fstatistic
+## calculando o p-value associado ao F-test
+##pf(29.68284,  4.00000, 24.00000 , lower.tail = FALSE)
+#
+#teste.coef <- table.coef(teste.summ)
+#
+#teste.table.model <- table.model("Regr_01", regrXX.step.models$Regr_01, teste.summ, teste.coef)
+## naõ salva a tabela! salvar separado com o objeto recebido
+#
+#teste.table.model
+
+```
+
+
+######### ANALISANDO OS SETS DE REGRESSÃO MAIS PROVÁVEIS DE FUNCIONAREM #############
+
+# Utilizar modelos stepwise! (recomendação do Fávero nas aulas - para evitar multicolinearidade)
+## CRIANDO TABELA COMPILADA COM TODOS OS R^2 E NÚMERO DE SÉRIES UTILIZADAS EM CADA ESTADO (CHAMANDO FUNÇÃO table.r2a.nSeries)
+```{r}
+
+# Criada a função para tabular os R2 ajustados e o número de séries
+
+regrXX.r2a.nSeries <- table.r2a.nSeries(regrXX.step.table)
+#glimpse(regrXX.r2a.nSeries)
+
+
+############ anotações anteriores a função #############
+
+#regrXX.step.models$Regr_25 # última regressão criada até o momento
+
+# rodar as funções de criação dos modelos para os sets 26 a 40
+
+# MAS ANTES: analisar a significância individual das séries para modificar a tabela-lista!
+
+# Criadas os sets 41 a 51
+# Rodados os modelos STEPWISE (através do scrip 03)
+
+# Rodados os sumérios (nesse script mesmo acima)
+
+```
+
+# Rankeando as melhores regressões POR ESTADO, com no mínimo duas séries e no máximo 6
+## Utilizando a tabela criada com a função table.r2a.nSeries()
+```{r}
+
+#glimpse(regrXX.r2a.nSeries)
+
+# já criei diversos campos no excel...
+
+######################################
+#### TABELA EXCEL IMPORTADA!!!! ## Importando a tabela tratada no excel ###########
+######################################
+table.r2a <-  as.data.frame(data.table::fread(choose.files(multi = FALSE)),
+                      encoding = "UTF-8")
+#glimpse(table.r2a)
+#r2a.names <- names(table.r2a)
+
+
+##############################################
+   #  FUNÇÃO  - CRIA A TABELA COM OS TOP 10 SETS PARA CADA ESTADO #
+#############################################
+
+rank.r2a.topX <- function(top = 10, minSeries = 2, maxSeries = 6, table){
+
+  #browser()
+  
+  table.r2a.top10 <- data.frame(matrix(nrow = top, dimnames = list(seq(1,top,1), c("Ranking"))))
+  table.r2a.top10$Ranking <- seq(1,top,1)
+  
+  # para cada estado (dentro de um for)
+  
+  # para testes
+  #e <- "AC"
+  
+  for (e in siglas) {
+    
+    e.r2 <- paste0(e,"_r2a")
+    e.n <- paste0(e,"_nSeries")
+    
+    ## filtrar coluna de nSeries entre 2 e 6
+    ## rankear pela coluna de r2a
+    ## pegar os 10 primeiros valores
+    temp.table <- table %>% 
+      dplyr::select(Regr_set, all_of(e.r2), all_of(e.n)) %>% 
+      dplyr::filter(get(e.n) >= minSeries & get(e.n) <= maxSeries) %>% 
+      dplyr::arrange(desc(get(e.r2))) %>% 
+      dplyr::slice_head(n = top)
+    
+    names(temp.table)[1] <- paste0(e,"_",names(temp.table)[1])
+    
+    table.r2a.top10 <- cbind(table.r2a.top10,
+                             temp.table)
+  } # fim do FOR dos estados
+  
+  return(table.r2a.top10)
+} # fim da FUNÇÃO
+
+#table(table.r2a.top10$AC_Regr_set)
+#glimpse(table.r2a.top10)
+
+
+##############################################
+   # FUNÇÃO - TRANSFORMANDO A TABELA EM LONG E CRIANDO COLUNAS COM NOME DO ESTADO E VARIÁVEL #
+#############################################
+
+rank.to.long <- function(table){
+
+  table.r2a.top10.long <- table %>% 
+    data.table::melt(
+      id.vars = c(names(.)[1]), # mantém as colunas categóricas
+      na.rm = FALSE, #mantém valores NA no long
+      variable.name = "Regr_set" # nome da nova coluna 'melted'
+  )
+  
+  
+  table.r2a.top10.long$Estado <- str_split(
+    string = table.r2a.top10.long$Regr_set, # strings
+    pattern =  "_", # caracter que dividirá o string
+    n = 2,  # divide em 2 pedaços apenas
+    simplify = TRUE # para retornar uma matriz
+              )[,1]
+  
+  table.r2a.top10.long$Var <- str_split(
+    string = table.r2a.top10.long$Regr_set, # strings
+    pattern =  "_", # caracter que dividirá o string
+    n = 2,  # divide em 2 pedaços apenas
+    simplify = TRUE # para retornar uma matriz
+              )[,2]
+  
+  return(table.r2a.top10.long)
+
+} # fim da FUNÇÃO
+
+##############################################
+   # CRIA TABELA COM ESTADOS NAS LINHAS E VARIÁVEIS NAS COLUNAS #
+#############################################
+
+# para teste
+#table <- rank.table.long$max3
+
+rank.to.wide <- function(table){
+  
+  table.wide <- table %>% # remove a 1a linha, ñ tem ano e est.
+  data.table::dcast(
+  formula = Estado ~ Var, #mantém UF (estados) nas linhas, e leva anos pras colunas
+  value.var = "value" # coluna com os valores a serem utilizados
+  )
+  return(table.wide)
+}
+
+
+##############################################
+   # CRIA TABELA DE FREQUÊNCIA/CONTAGEM DE CADA SET DE REGRESSÃO PELO RANKING EM QUE FICOU POSICIONADO #
+#############################################
+
+
+count.rank <- function(table.long){
+
+  contagem.r2a.top10 <- as.data.frame(table.long %>% dplyr::filter(Var == "Regr_set") %>% 
+    dplyr::select(Ranking, value) %>% 
+    table()) %>% 
+      dplyr::arrange(Ranking, desc(Freq)) 
+
+  return(contagem.r2a.top10)
+}
+
+```
+
+# Chamando as funções de ranking 
+```{r}
+##############################################
+   # QUAL O MELHOR SET MELHOR SET PARA CADA ESTADO? #
+  # VARIAR O NÚMERO MÁXIMO DE SÉRIES!!! CORTE DE 3 A 6! #
+#############################################
+
+# tabela fonte de funções necessárias:
+table.r2a
+rank.r2a.topX(top = 10, minSeries = 2, maxSeries = 6, table)
+rank.to.long(table)
+count.rank(table.long)
+
+rank.table <- list()
+rank.table.long <- list()
+rank.table.count <- list()
+rank.table.wide <- list()
+
+rank.table[["max3"]] <- rank.r2a.topX(top = 1, minSeries = 2, maxSeries = 3, table = table.r2a)
+rank.table.long[["max3"]] <- rank.to.long(rank.table[["max3"]])
+rank.table.count[["max3"]] <- count.rank(rank.table.long[["max3"]])
+rank.table.wide[["max3"]] <- rank.to.wide(rank.table.long[["max3"]])
+
+rank.table[["max4"]] <- rank.r2a.topX(top = 1, minSeries = 2, maxSeries = 4, table = table.r2a)
+rank.table.long[["max4"]] <- rank.to.long(rank.table[["max4"]])
+rank.table.count[["max4"]] <- count.rank(rank.table.long[["max4"]])
+rank.table.wide[["max4"]] <- rank.to.wide(rank.table.long[["max4"]])
+
+rank.table[["max5"]] <- rank.r2a.topX(top = 1, minSeries = 2, maxSeries = 5, table = table.r2a)
+rank.table.long[["max5"]] <- rank.to.long(rank.table[["max5"]])
+rank.table.count[["max5"]] <- count.rank(rank.table.long[["max5"]])
+rank.table.wide[["max5"]] <- rank.to.wide(rank.table.long[["max5"]])
+
+rank.table[["max6"]] <- rank.r2a.topX(top = 1, minSeries = 2, maxSeries = 6, table = table.r2a)
+rank.table.long[["max6"]] <- rank.to.long(rank.table[["max6"]])
+rank.table.count[["max6"]] <- count.rank(rank.table.long[["max6"]])
+rank.table.wide[["max6"]] <- rank.to.wide(rank.table.long[["max6"]])
+
+
+# salvando as tabelas
+rank.table.wide[["max3"]] %>% data.table::fwrite(file = "Ranking_top1_max3.csv")
+rank.table.wide[["max4"]] %>% data.table::fwrite(file = "Ranking_top1_max4.csv")
+rank.table.wide[["max5"]] %>% data.table::fwrite(file = "Ranking_top1_max5.csv")
+rank.table.wide[["max6"]] %>% data.table::fwrite(file = "Ranking_top1_max6.csv")
+
+# valores únicos (sets) das tabelas
+sort(unique(rank.table.wide$max3$Regr_set))
+sort(unique(rank.table.wide$max4$Regr_set))
+sort(unique(rank.table.wide$max5$Regr_set))
+sort(unique(rank.table.wide$max6$Regr_set))
+
+```
+
+
+
+
+########################## CHAMANDO OUTRAS FUNÇÕES - EDA ########################
+
+
+# Chamando a nova função de banco de dados para y x pred e PLOT ypred
+```{r}
+
+# utilizar dados padronizados!
+teste.ypred <- create.db.plot.ypred(db.regrXX.std$Regr_01)
+
+plot.ypred("Regr_01", teste.ypred, 5, 6)
+
+```
+
+
+# EDA das preditoras
+## Chamando as funções criadas no script 04
+## Funções foram sobrescritas pelos objetos criados no chunk seguinte (para armazenar de todos os estados)
+```{r}
+
+# Exemplo de banco de dados a ser enviado:
+# naõ padronizado
+db.regrXX$Regr_01$AC
+
+# padronizado
+db.regrXX.std$Regr_01$AC
+
+# para dados padronizados APENAS!
+calcCorr(db)
+corrMatrix(corr.db)
+corrMatrixDend(corr.db)
+corrLines(db)
+corrtable(db)
+hierarqPred(db)
+
+# tanto faze se forem padronizados ou não
+histVars(db)
+splomVars(db)
+
+
+```
+
+## Chamando as funções criadas no script 04A (todos os estados)
+```{r}
+
+# Exemplo de banco de dados a ser enviado:
+# naõ padronizado
+db.regrXX$Regr_01
+
+# padronizado
+db.regrXX.std$Regr_01
+
+add <- regrXX # para fazer para tudo
+
+add <- c("Regr_24", "Regr_25") # mudar/acrescentar nomes para o(s) número(s) do(s) set(s) que se deseja obter os objetos
+add <- c("Regr_01")
+
+corr.db <- list()
+corrMatrix <- list()
+corrDend <- list()
+corrLines <- list()
+corrTable <- list()
+hierarqPred <- list()
+histVars <- list()
+splomVars <- list()
+splomVarsDefault <- list()
+
+#para testes
+r <- "Regr_25"
+
+for (r in add) {
+  
+  db <- db.regrXX.std[[r]]
+  # para dados padronizados APENAS!
+  corr.db[[r]] <- calcCorr.states(db)
+  corrMatrix[[r]] <- corrMatrix.states(corr.db[[r]])
+  corrDend[[r]] <-corrMatrixDend.states(corr.db[[r]])
+  
+  corrLines[[r]] <- corrLines.states(db)
+  corrTable[[r]] <- corrTable.states(db)
+  hierarqPred[[r]] <- hierarqPred.states(db)
+  
+  # tanto faze se forem padronizados ou não
+  histVars[[r]] <- histVars.states(db)
+  
+  # demora bastante para rodar
+  splomVars[[r]] <- splomVars.states(db, r)
+  splomVarsDefault[[r]] <- splomVars.states.default(db, r)
+}
+
+
+
+```
+
+## Visualizando os arquivos resultantes das funções (script 04 - EDA/correlações)
+```{r}
+
+# para plotar o objeto corrplot matrix
+library(gridExtra)
+grid.newpage()
+grid.arrange(corrMatrix$Regr_01$AC)
+
+corrDend$Regr_01$AC
+corrLines$Regr_01$AC
+corrTable$Regr_01$AC
+
+# para visualizar os dendrogramas (hierárquicos)
+factoextra::fviz_dend(hierarqPred$Regr_01$AC,
+                      k = 2,
+                      horiz = TRUE,
+                      cex = 0.3,
+                      #type = "circular", #rectangle",
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+
+histVars$Regr_01$AC
+
+splomVars$
+
+
+```
+
+
+
+########################## ANÁLISES ESPECÍFICAS ########################
+
+# EXPLORANDO A REGR_24 - APENAS AG E PEC
+```{r}
+
+# GERAR O MODELO LM (SEM STEPWISE)
+
+# banco de dados padronizado já criado
+db.regrXX$Regr_24
+
+# modelos já criados
+regrXX.lm.models.std$Regr_24
+
+# tabelas com parâmetros dos modelos já salvas
+regrXX.lm.table$Regr_24
+
+# Visualizando as correlações
+# para plotar o objeto corrplot matrix
+#library(gridExtra)
+grid.newpage()
+grid.arrange(corrMatrix$Regr_24$PA)
+
+
+# plot das variáveis preditoras X y (padronizados)
+plot.ypred(db.plot.ypred = create.db.plot.ypred(db.regrXX.std$Regr_24),
+                regr = "Regr_24",
+           ncol = 4)
+
+plot.ypred(db.plot.ypred = create.db.plot.ypred(db.regrXX.std$Regr_25),
+                regr = "Regr_25",
+           ncol = 4)
+
+# plot do modelo lm (sem stepwise) y X yhat
+plot.yyhat(regr = "Regr_24",
+           db.plot = create.db.plot(regrXX.lm.models$Regr_24))
+
+# plot do modelo lm (sem stepwise) y X yhat
+plot.yyhat(regr = "Regr_25",
+           db.plot = create.db.plot(regrXX.lm.models$Regr_25))
+
+
+```
+
+# Explorango o IGP-M (histograma)
+# FAZER LOG10 E VER SE FICA MAIS LINEAR COM Y?
+```{r}
+
+# filtrando apenas as linhas que contém "IGP" na base long
+pred.long %>% dplyr::filter(grepl("IGP",Serie_sigla)) %>% 
+  ggplot() +
+  geom_histogram(aes(x = value),
+                 bins = 1000)
+
+pred.long %>% dplyr::filter(grepl("IGP",Serie_sigla)) %>% dplyr::select(value)
+
+# transformação de box-cox apenas no IGP-M? pode? precisa?
+
+
+# HISTOGRAMA DO IPCA - FAZER LOG10 E VER SE FICA MAIS LINEAR COM Y?
+# filtrando apenas as linhas que contém "IGP" na base long
+pred.long %>% dplyr::filter(grepl("IPC",Serie_sigla)) %>% 
+  ggplot() +
+  geom_histogram(aes(x = value),
+                 bins = 300)
+
+```
+
+# Analisando a distribuição de uma variável por estado - função hist1Var
+## Transformações necessários para 'normalizar'?
+```{r}
+
+hist1Var.states(pred.long, var = "SO_E_POP.total-pop")
+
+unique(pred.long$Serie_sigla_semUF)
+
+```
+
+# Analisando a distribuição de y por estado
+# NECESSÁRIO BOX-COX??? COMO SABER??
+```{r}
+
+y.long %>% ggplot() +
+geom_histogram(aes(x = y_std)) +
+  facet_wrap( ~ Estado,
+              scales = "free") +
+  theme_bw(base_size = 6) + 
+  theme(axis.text.x = element_text(angle = 90))
+  
+
+```
+
+# Teste de box-cox para y - se lambda for próximo de 1 não precisa realizar transformação
+```{r}
+
+#Para calcular o lambda de Box-Cox
+
+y.lambda <- list()
+y.lambda.db <- list()
+
+for(e in siglas){
+  y.lambda[[e]] <- powerTransform(db.regrXX$Regr_01[[e]]$y) #função powerTransform do pacote car#
+  y.lambda.db
+}
+
+y.lambda$AC$lambda # valor do lambda
+
+
+
+
+
+#Inserindo o lambda de Box-Cox na base de dados para a estimação de um novo modelo
+bebes$bc_comprimento <- (((bebes$comprimento ^ lambda_BC$lambda) - 1) / 
+                            lambda_BC$lambda)
+
+#Estimando um novo modelo OLS com variável dependente transformada por Box-Cox
+modelo_bc <- lm(formula = bc_comprimento ~ idade,
+                data = bebes)
+
+# SHAPIRO-WILK - PARA AMOSTRAS PEQUENAS!!!! UTILIZAR ESTE!
+shapiro.test(modelo$residuals)
+
+#Teste de Shapiro-Francia para os resíduos do modelo_bc - PARA AMOSTRAS GRANDES (>30)
+sf.test(modelo_bc$residuals) #função sf.test do pacote nortest
+
+```
+
