@@ -1,0 +1,343 @@
+---
+title: "06_EDA_Preditoras"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# FUNÇÃO calcCorr.states(db) - Calcular correlações 
+# DADOS PADRONIZADOS! - objeto list() com todos os estados
+```{r}
+# utilizar os dados no formato wide (variáveis nas colunas, anos nas linhas)
+# apenas os dados numéricos, sem uma coluna de ano, adequado para o caso
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+calcCorr.states <- function(db){
+  
+  corr.states <- list()
+  
+  for (e in siglas) {
+    corr.states[[e]] <- db[[e]] %>% as.matrix() %>% Hmisc::rcorr(type = "pearson")
+  }
+  
+  return(corr.states)
+  
+}
+
+
+```
+
+# FUNÇÃO - corrMatrix.states(corr.db) - Matriz de correlação (mandar o objeto resultante do cálculo de correlação
+# DADOS PADRONIZADOS! - objeto list() com todos os estados
+```{r}
+
+# matriz usada nos resultados preliminares
+# em cima um tipo e embaixo outro
+
+#install.packages("gridGraphics")
+
+corrMatrix.states <- function(corr.db){
+  
+    library(gridGraphics)
+    grab_grob <- function(){
+    grid.echo()
+    grid.grab()
+    }
+  
+  matrix.states <- list()
+  
+  for (e in siglas) {
+    
+    corrplot::corrplot.mixed(corr.db[[e]]$r, 
+                           upper = 'square',
+                           lower = 'number',
+                           lower.col = 'black',
+                           bg = 'grey80',
+                           diag = NULL,
+                           tl.pos = 'lt',
+                           tl.col = 'black',
+                           tl.cex = 0.8,
+                           number.cex = 0.4,
+                           number.digits = 2
+                           #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+                           #sig.level = 0.05, 
+                           #insig = "blank"
+                           ) 
+  
+    matrix.states[[e]] <- grab_grob()
+  }
+  return(matrix.states)
+}
+
+```
+
+## FUNÇÃO - corrMatrixDend.states(corr.db) - Plot da matriz de correlações com dendograma (heatmaply_cor)
+# DADOS PADRONIZADOS!- objeto list() com todos os estados
+```{r}
+
+#pacote heatmaply
+
+corrMatrixDend.states <- function(corr.db){
+  
+  Mdend.states <- list()
+  
+  for (e in siglas) {
+    
+  Mdend.states[[e]] <- heatmaply::heatmaply_cor(
+                        corr.db[[e]]$r,
+                    
+                        plot_method = "plotly", # plotly --> fica melhor
+                    
+                        hclustfun = hclust,  # default é hclust / tsclust usa dados transpostos
+                        distfun = proxy::dist,
+                        
+                        hclust_method = "ward.D2", # /single / complete / average / centroid
+                        dist_method = "euclidean", # euclidean, maximum, manhattan, canberra, binary, minkowski
+                        
+                        grid_size = 0.2 #,
+                        
+                      )
+  }
+  return(Mdend.states)
+}
+
+```
+
+
+# FUNÇÃO - corrLines.states(db)
+# DADOS PADRONIZADOS!
+# "Linhas" de correlação -visualização das correlações por espessura e cor
+## Não dá pra ver nada nem com poucas variáveis (14 da Regr_01) - não vai servir para nada se tiver > 4 ou 5
+```{r}
+
+#A função correlation do pacote correlation faz com que seja estruturado um
+#diagrama interessante que mostra a inter-relação entre as variáveis e a
+#magnitude das correlações entre elas
+#Requer instalação e carregamento dos pacotes see e ggraph para a plotagem
+corrLines.states <- function(db){
+  
+ lines.states <- list()
+  
+  for (e in siglas) {
+    lines.states[[e]] <- db[[e]] %>%
+      correlation::correlation(method = "pearson") %>%
+      plot()
+  }
+ return(lines.states)
+}
+
+```
+
+# FUNÇÃO - corrTable.states(db)
+# DADOS PADRONIZADOS!
+# Tabela com as correlações 2 a 2 - bem boa
+```{r}
+
+#A função correlation do pacote correlation faz com que seja estruturado um
+#diagrama interessante que mostra a inter-relação entre as variáveis e a
+#magnitude das correlações entre elas
+#Requer instalação e carregamento dos pacotes see e ggraph para a plotagem
+corrTable.states <- function(db){
+  
+  table.states <- list()
+  
+  for (e in siglas) {
+    table.states[[e]] <-   db[[e]] %>% correlation::correlation(method = "pearson")
+  }
+  return(table.states)
+}
+
+```
+
+
+# FUNÇÃO - hieraqPred.states(db) - Transposição e Agrupamento hierárquico das variáveis preditoras
+# DADOS PADRONIZADOS!
+```{r}
+# formato de entrada: Variáveis nas linhas, anos nas colunas
+
+
+hierarqPred.states <- function(db){
+  library(dtwclust)
+  
+  
+  
+    temp.hclust <- list()
+    
+    for (e in siglas) {
+      if(length(names(db[[e]]))>3) { # não conta com y
+      
+      db.t <- db[[e]] %>% dplyr::mutate("Ano" = row.names(db[[e]])) %>% 
+        data.table::transpose(keep.names = "Serie_sigla_semUF",
+                              make.names = "Ano")
+      
+      db.t <- column_to_rownames(db.t, var = "Serie_sigla_semUF")
+      
+      
+      # função hclust
+      temp.hclust[[e]] <- tsclust(
+        
+        ##### removendo o y (primeira linha) #### <<<<<<<<<<<<<
+        series = db.t[-1,], # dados com séries em linhas (pode ser df)
+        
+        type = "hierarchical", # método de clusterização
+        control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+        #k = 7L, # número de grupos
+        distance = "Euclidean"#, # utiliza distâncias de proxy::dist()
+        #preproc = zscore # pré-processamento utilizando zscores
+      )
+      } # fim do IF
+      
+      else {
+        temp.hclust[[e]] <- NULL
+        }
+    
+    } # fim do FOR
+    return(temp.hclust)
+  
+}
+
+```
+
+
+# FUNÇÃO - histVars.states(db) - Histograma das variáveis (target e preditoras, para um set)
+```{r}
+
+histVars.states <- function(db){
+
+  hist.states <- list()
+  
+  
+  for (e in siglas) {
+    
+  
+    # criando um data frame long para poder usar no ggplot
+    db.long <- db[[e]] %>%
+      data.table::melt(
+      na.rm = FALSE, #mantém valores NA no long
+      variable.name = "Serie_sigla_semUF" # nome da nova coluna 'melted'
+    ) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+    
+    
+    hist.states[[e]] <- db.long %>% ggplot() +
+                          geom_histogram(
+                            aes(x = value),
+                            bins = 10
+                          ) +
+                          facet_wrap( ~ Serie_sigla_semUF,
+                                      scales = "free") +
+                          theme_bw(base_size = 7)
+  
+  }
+  
+  return(hist.states)
+}
+
+
+```
+
+# FUNÇÃO - hist1Var.states(db) - Histograma das variáveis (target e preditoras, para um set)
+```{r}
+
+hist1Var.states <- function(db.long, var){
+
+    db.long <- db.long %>% 
+      dplyr::filter(Serie_sigla_semUF == var) 
+    
+    gran <- db.long$Granularidade[1]
+    
+    hist.states <- db.long %>% 
+      ggplot() +
+      geom_histogram(
+        aes(x = value),
+        bins = 10
+        ) + theme_bw(base_size = 7)
+      
+    if(gran == "E") {
+        hist.states <- hist.states + 
+          facet_wrap( ~ Estado,
+                    scales = "free")
+      }
+      
+  
+  
+  return(hist.states)
+}
+
+
+```
+
+
+
+
+# FUNÇÃO - splomVars.states(db, regrname) - scatter plot matrix das variáveis, incluindo y
+```{r}
+# para testes
+#regrname <- "Regr_XX"
+
+splomVars.states <- function(db, regrname){
+  library(GGally)
+  
+  splom <- list()
+  options(scipen = 99999)
+  
+  for (e in siglas) {
+  
+    #options(repr.plot.width=15, repr.plot.height=15)
+    splom[[e]] <- GGally::ggpairs(db[[e]],
+                    progress = FALSE,
+                    upper = list(continuous = wrap("cor", size = 1)),
+                    lower = list(continuous = wrap("points", size = 0.05))) + 
+      theme_bw(base_size = 1.5) +
+      theme(axis.text.x = element_text(angle = 90)) +
+      scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+      scale_x_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE))
+    
+      ggsave(plot = splom[[e]], filename = paste0(regrname,"_",e,"_SPLOM_",Sys.Date(),".png"), 
+                                          units = "px", 
+                                          width=2000, 
+                                          height=2000, 
+                                          dpi=400, 
+                                          limitsize = FALSE, 
+                                          device = "png")
+  }
+    
+    return(splom)
+}
+
+```
+
+# FUNÇÃO - splomVars.states.default(db, regrname) - scatter plot matrix das variáveis, incluindo y
+```{r}
+# para testes
+#regrname <- "Regr_XX"
+
+splomVars.states.default <- function(db, regrname){
+  library(GGally)
+  
+  splom <- list()
+  options(scipen = 99999)
+  
+  for (e in siglas) {
+  
+    #options(repr.plot.width=15, repr.plot.height=15)
+    splom[[e]] <- GGally::ggpairs(db[[e]],
+                    progress = FALSE #,
+                    #upper = list(continuous = wrap("cor", size = 1)),
+                    #lower = list(continuous = wrap("points", size = 0.05))
+                    ) + 
+      theme_bw() +
+      theme(axis.text.x = element_text(angle = 90)) +
+      scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+      scale_x_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE))
+    
+      ggsave(plot = splom[[e]], filename = paste0(regrname,"_",e,"_SPLOM_deafult_",Sys.Date(),".png"))
+  }
+    
+    return(splom)
+}
+
+```
