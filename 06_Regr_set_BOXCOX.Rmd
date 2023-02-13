@@ -1,0 +1,315 @@
+---
+title: "06_RegrXX_escolhida"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Séries candidatas a serem utilizadas nas interpretações finais: 53-62-76-85
+### Todas possuem a maioria dos estados com algum teste que não passa
+#### Necessário tentar box-cox
+
+# Adaptando o banco de dados para chamar apenas esses sets com transformação de box-cox
+```{r}
+
+# plota um gráfico de lambda pelo log-likelihood (y)
+#teste.boxcox <- MASS::boxcox(object = regrXX.step.models$Regr_53$AC, data = db.regrXX$Regr_53$AC)
+# precisa pegar o x (lambda) quando y (log-lik) é máximo
+
+#teste.lambda <- powerTransform(db.regrXX$Regr_53$AC$y)$lambda # retorna diversas análises, sendo o lambda de interesse
+
+#######################################################
+#### CALCULANDO O LAMBDA PARA OS SETS ESCOLHIDOS (BOX-COX) #####################
+#######################################################
+
+#regrs <- c("Regr_53", "Regr_62", "Regr_76", "Regr_85")
+#regrs <- c("Regr_91")
+#regrs <- c("Regr_93", "Regr_94")
+#regrs <- c("Regr_95", "Regr_96")
+#regrs <- c("Regr_97", "Regr_98", "Regr_99", "Regr_100","Regr_101","Regr_102","Regr_103","Regr_104","Regr_105")
+#regrs <- c("Regr_98", "Regr_100","Regr_102","Regr_106","Regr_110","Regr_112")
+#regrs <- "Regr_108"
+#regrs <- "Regr_109"
+#regrs <- "Regr_107"
+#regrs <- "Regr_111"
+#regrs <- c(paste0("Regr_",seq(116,123,1)))
+#regrs <- "Regr_124"
+
+#regrs <- c("Regr_125","Regr_126")
+
+regrs <- "Regr_106"
+
+
+# objeto para armazenar os lambdas das regressões por estado
+regr.lambda <- list()
+
+
+
+for(regr in regrs){
+  for (e in siglas) {
+  
+    regr.lambda[[regr]][[e]] <- powerTransform(db.regrXX[[regr]][[e]]$y)$lambda
+    
+    } # fimd o FOR dos estados
+} # fim do FOR dos sets
+
+
+
+#######################################################
+#### CALCULANDO O NOVO Y COM BOX-COX #####################
+#######################################################
+
+# objeto para armazenar banco de dados modificado
+db.regrXX.bc <- list()
+db.regrXX.std.bc <- list()
+
+for(regr in regrs){
+  
+  db.regrXX.bc[[regr]] <- db.regrXX[[regr]]  # copiando apenas o set necessário
+  db.regrXX.std.bc[[regr]] <- db.regrXX.std[[regr]]  # copiando apenas o set necessário
+    
+  for (e in siglas) {
+
+    temp.y <- db.regrXX[[regr]][[e]]$y
+    temp.lam <- regr.lambda[[regr]][[e]]
+    
+    # Criando a variável ybc nos bancos de dados já existentes - colocando no lugar de y mesmo para poder utilizar a mesma função
+    db.regrXX.bc[[regr]][[e]]$y <- (((temp.y ^ temp.lam) - 1) / temp.lam)
+    
+    # padronizando o y transformado
+    db.regrXX.std.bc[[regr]][[e]]$y <- scale(db.regrXX.bc[[regr]][[e]]$y)
+    
+    
+    } # fimd o FOR dos estados
+} # fim do FOR dos sets
+
+
+#######################################################
+#### RODANDO OS MODELOS STEPWISE #####################
+#######################################################
+
+regrXX.step.models.bc <- list()
+regrXX.table.series.bc <- list()
+regrXX.db.plot.bc <- list()
+regrXX.plots.bc <- list()
+
+regrXX.step.models.std.bc <- list()
+regrXX.table.series.std.bc <- list()
+regrXX.db.plot.std.bc <- list()
+regrXX.plots.std.bc <- list()
+
+for(regr in regrs){
+  regrXX.step.models.bc[[regr]] <- stepwise.model(db.regrXX.bc[[regr]])
+  
+  #padronizado
+  regrXX.step.models.std.bc[[regr]] <- stepwise.model(db.regrXX.std.bc[[regr]])
+  
+    # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series.bc[[regr]] <- table.series(regr, regrXX.step.models.bc[[regr]])) %>% 
+    data.table::fwrite(paste0(
+      regr,"_BOXCOX_coefs_e_series_",Sys.Date(),".csv"
+    ))
+  
+  ##padronizado
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series.std.bc[[r]] <- table.series(r, regrXX.step.models.std.bc[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_std_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot.bc[[regr]] <- create.db.plot(regrXX.step.models.bc[[regr]])
+  
+  # padronizado
+  regrXX.db.plot.std.bc[[regr]] <- create.db.plot(regrXX.step.models.std.bc[[regr]])
+  
+  
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots.bc[[regr]] <- plot.yyhat(regr ,regrXX.db.plot.bc[[regr]])) %>% 
+    ggsave(filename = paste0(
+      regr,"_BOXCOX_plot_yyhat_",Sys.Date(),".jpg"
+    ))
+  
+  # padronizado
+    # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots.std.bc[[regr]] <- plot.yyhat(regr ,regrXX.db.plot.std.bc[[regr]])) %>% 
+    ggsave(filename = paste0(
+      regr,"_BOXCOX_STD_plot_yyhat_",Sys.Date(),".jpg"
+    ))
+  
+} # fim do FOR dos sets
+
+# refazendo o objeto com os plots que foi sobrescrito sem querer
+#for(regr in regrXX){
+#  regrXX.plots[[regr]] <- plot.yyhat(regr ,regrXX.db.plot[[regr]])
+#}
+
+#######################################################
+#### GERANDO OS SUMÁRIOS #####################
+#######################################################
+
+regrXX.step.summ.bc <- list()
+regrXX.step.coef.bc <- list()
+regrXX.step.coef.table.bc <- list()
+regrXX.step.table.bc <- list()
+
+regrXX.step.summ.std.bc <- list()
+regrXX.step.coef.std.bc <- list()
+regrXX.step.coef.table.std.bc <- list()
+regrXX.step.table.std.bc <- list()
+
+
+
+#r <- NULL
+for (r in regrs) {
+  
+  regrXX.step.summ.bc[[r]] <- table.summ(regrXX.step.models.bc[[r]])
+  regrXX.step.summ.std.bc[[r]] <- table.summ(regrXX.step.models.std.bc[[r]])
+  
+  regrXX.step.coef.bc[[r]] <- table.coef(regrXX.step.summ.bc[[r]])
+  regrXX.step.coef.std.bc[[r]] <- table.coef(regrXX.step.summ.std.bc[[r]])
+  
+  
+  
+  # JÁ CHAMADO ACIMA
+  #(regrXX.step.coef.table.bc[[r]]  <- table.series(r,regrXX.step.models.bc[[r]] )) %>%    
+  #  data.table::fwrite(paste0(
+  #   r,"_coefs_e_series_BOXCOX_",Sys.Date(),".csv"
+  #  ))  #
+
+  
+  
+  
+  print("STEP")
+  regrXX.step.table.bc[[r]] <- table.model(r, 
+                                        model = regrXX.step.models.bc[[r]], 
+                                        summ = regrXX.step.summ.bc[[r]], 
+                                        coef = regrXX.step.coef.bc[[r]])
+  
+  # padronizado
+    print("STEP STD")
+  regrXX.step.table.std.bc[[r]] <- table.model(r, 
+                                            model = regrXX.step.models.std.bc[[r]],
+                                            summ = regrXX.step.summ.std.bc[[r]],
+                                            coef = regrXX.step.coef.std.bc[[r]])
+  
+
+
+
+} # fim do FOR dos sets de regressão
+
+#######################################################
+#### COMPILAÇÃO DOS R^2 E NÚMERO DE SÉRIES #####################
+#######################################################
+
+
+regrXX.r2a.nSeries.bc <- table.r2a.nSeries(regrXX.step.table.bc)
+
+# para dados padronizados
+#regrXX.r2a.nSeries.bc <- table.r2a.nSeries(regrXX.step.table.std.bc)
+
+
+
+#######################################################
+#### DESFAZENDO A TRANSFORMAÇÃO BOX-COX DE Y NOS MODELOS #####################
+#######################################################
+
+# necessário inserir os y's originais e tranformar os fitted values com base no lambda para yhat 'normal'
+
+regrXX.step.models.bc.back <- regrXX.step.models.bc # copia os modelos Box-Cox em um novo objeto
+regrXX.db.plot.bc.back <- list()
+regrXX.plots.bc.back <- list()
+
+regrXX.step.models.std.bc.back <- regrXX.step.models.std.bc # copia os modelos Box-Cox em um novo objeto
+regrXX.db.plot.std.bc.back <- list()
+regrXX.plots.std.bc.back <- list()
+
+for(regr in regrs){
+    
+  for (e in siglas) {
+
+    # valores originais a serem alterados
+    regrXX.step.models.bc.back[[regr]][[e]]$model$y <- regrXX.step.models[[regr]][[e]]$model$y # modelo stepwise original
+    regrXX.step.models.std.bc.back[[regr]][[e]]$model$y <- regrXX.step.models.std[[regr]][[e]]$model$y # modelo stepwise original
+    
+    
+    # simplificando nomes
+    temp.yhat <- regrXX.step.models.bc[[regr]][[e]]$fitted.values
+    temp.lam <- regr.lambda[[regr]][[e]]
+    
+    # fitted values a serem alterados
+    regrXX.step.models.bc.back[[regr]][[e]]$fitted.values <- (((temp.yhat*(temp.lam)) + 1))^(1/(temp.lam))
+    
+    # PADRONIZANDO OS FITTED VALUES
+    # fitted values a serem alterados
+    regrXX.step.models.std.bc.back[[regr]][[e]]$fitted.values <- scale(regrXX.step.models.bc.back[[regr]][[e]]$fitted.values)
+    names(regrXX.step.models.std.bc.back[[regr]][[e]]$fitted.values) <-
+      names(regrXX.step.models.bc.back[[regr]][[e]]$fitted.values)
+    
+  } # fim do FOR dos estados
+  
+  
+    
+    # cria um banco de dados que pode ser utilizado para plot de y x yhat
+      regrXX.db.plot.bc.back[[regr]] <- create.db.plot(regrXX.step.models.bc.back[[regr]])
+      
+      # plota os gráficos de y x yhat para todos os estados
+      (regrXX.plots.bc.back[[regr]] <- plot.yyhat(regr ,regrXX.db.plot.bc.back[[regr]])) %>% 
+        ggsave(filename = paste0(
+          regr,"_BOXCOX_back_plot_yyhat_",Sys.Date(),".jpg"
+        ))
+      
+      
+  # PLOTS PADRONIZADOS
+    # cria um banco de dados que pode ser utilizado para plot de y x yhat
+      regrXX.db.plot.std.bc.back[[regr]] <- create.db.plot(regrXX.step.models.std.bc.back[[regr]])
+      
+      # plota os gráficos de y x yhat para todos os estados
+      (regrXX.plots.std.bc.back[[regr]] <- plot.yyhat(regr ,regrXX.db.plot.std.bc.back[[regr]])) %>% 
+        ggsave(filename = paste0(
+          regr,"_BOXCOX_STD_back_plot_yyhat_",Sys.Date(),".jpg"
+        ))
+  
+  
+} # fim do FOR dos sets de regressão
+  
+  
+regrXX.step.models.std.bc.back[[regr]]$AC$fitted.values
+  
+  
+  ##########################
+  # exemplo da transformação
+#bebes$yhat_modelo_bc <- (((modelo_bc$fitted.values*(lambda_BC$lambda))+
+#                                    1))^(1/(lambda_BC$lambda))
+
+
+
+```
+
+
+
+
+
+####################### AUXILIAR ########################################
+
+# Transformação de Box-cox
+```{r}
+#Para calcular o lambda de Box-Cox
+lambda_BC <- powerTransform(bebes$comprimento) #função powerTransform do pacote car#
+
+#Inserindo o lambda de Box-Cox na base de dados para a estimação de um novo modelo
+bebes$bc_comprimento <- (((bebes$comprimento ^ lambda_BC$lambda) - 1) / 
+                            lambda_BC$lambda)
+
+#Estimando um novo modelo OLS com variável dependente transformada por Box-Cox
+modelo_bc <- lm(formula = bc_comprimento ~ idade,
+                data = bebes)
+
+
+```
