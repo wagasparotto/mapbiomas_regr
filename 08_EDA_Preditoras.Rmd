@@ -1,0 +1,504 @@
+---
+title: "07_EDA_Preditoras_finais"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+################################################################################
+################## EDA DAS SÉRIES PREDITORAS FINAIS - SET 106 ##################
+################################################################################
+
+# Bancos de dados para utilizar nas funções (criado no script 07 - Set final):
+## db.regr : tem todas as séries de ENTRADA, ANTES DO STEPWISE!
+
+## db.plot.pred : possui apenas as séries relevantes para cada estado!
+
+# Chamando funções criadas no script 04A
+```{r}
+
+#unique(db.plot.pred$Serie_sigla_semUF)
+
+corrTable <- calcCorr.states(db.regr)
+db.regr$AC
+
+
+db.regr$AC
+
+
+corrMatrix <- corrMatrix.states(corrTable)
+
+# para plotar o objeto corrplot matrix
+library(gridExtra)
+grid.newpage()
+grid.arrange(corrMatrix$MS)
+
+corrMatrixDend.states(corr.db)
+corrLines.states(db)
+corrTable.states(db)
+hieraqPred.states(db)
+histVars.states(db)
+hist1Var.states(db) 
+splomVars.states(db, regrname) 
+splomVars.states.default(db, regrname)
+
+
+```
+
+# Matriz de correlação entre as séries que não são estaduais
+## SEM LEI CRIMES - que é dummy
+```{r}
+
+# qual banco de dados utilizar?
+
+# calculando as correlações entre as séries nacionais e globais
+corrTable.ng <- db.pred.ng.wide[,c(-1,-11)] %>% as.matrix() %>% Hmisc::rcorr(type = "pearson")
+
+
+corrplot::corrplot.mixed(corrTable.ng$r, 
+           upper = 'square',
+           lower = 'number',
+           lower.col = 'black',
+           bg = 'grey80',
+           diag = NULL,
+           tl.pos = 'lt',
+           tl.col = 'black',
+           tl.cex = 0.8,
+           number.cex = 0.7,
+           number.digits = 2
+           #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+           #sig.level = 0.05, 
+           #insig = "blank"
+           )
+
+
+```
+
+# Matriz de correlação entre as séries que não são estaduais
+## EM ORDEM ALFABÉTICA
+```{r}
+
+# qual banco de dados utilizar?
+
+# calculando as correlações entre as séries nacionais e globais
+corrTable.ng.alfab <- db.pred.ng.wide[,c(-1,-11)] %>% 
+  dplyr::select(order(colnames(db.pred.ng.wide[,c(-1,-11)]))) %>% 
+  as.matrix() %>% Hmisc::rcorr(type = "pearson")
+
+
+corrplot::corrplot.mixed(corrTable.ng.alfab$r, 
+           upper = 'square',
+           lower = 'number',
+           lower.col = 'black',
+           bg = 'grey80',
+           diag = NULL,
+           tl.pos = 'lt',
+           tl.col = 'black',
+           tl.cex = 0.8,
+           number.cex = 0.7,
+           number.digits = 2
+           )
+
+
+```
+
+# Matriz de correlação entre as séries que não são estaduais
+## EM ORDEM ALFABÉTICA - COM X NAS CORRELAÇÕES NÃO SIGNIFICANTES
+```{r}
+
+# qual banco de dados utilizar?
+
+# calculando as correlações entre as séries nacionais e globais
+corrTable.ng.alfab <- db.pred.ng.wide[,c(-1,-11)] %>% 
+  dplyr::select(order(colnames(db.pred.ng.wide[,c(-1,-11)]))) %>% 
+  as.matrix() %>% Hmisc::rcorr(type = "pearson")
+
+# trocando os NAs da matriz com p-values por 0.01
+corrTable.ng.alfab$P <- corrTable.ng.alfab$P %>% replace_na(replacement = 0.01)
+
+corrplot::corrplot.mixed(corrTable.ng.alfab$r, 
+           upper = 'square',
+           lower = 'number',
+           lower.col = 'black',
+           bg = 'grey80',
+           diag = NULL,
+           tl.pos = 'lt',
+           tl.col = 'black',
+           tl.cex = 0.8,
+           number.cex = 0.7,
+           number.digits = 2,
+           p.mat = corrTable.ng.alfab$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+           sig.level = 0.05, 
+           insig = "pch",
+           pch.col = "grey80"
+           #insig = "label_sig",
+           #pch = "*",
+           #pch.cex = 1
+           )
+
+#corrplot::corrplot()
+
+```
+
+
+######### 10/10/2022 - tabela com as correlações entre as preditoras e os estados #####
+
+## Tabela de correlações entre as séries e os estados
+```{r}
+
+temp.df <- as.data.frame(corrTable$AC$r)
+temp.df.p <- as.data.frame(corrTable[[e]]$p)
+
+corrTable$AC$
+
+dplyr::filter(list.pred, Regr_106 == 1)$Serie_sigla_semUF
+
+corr.pred.vs.y <- data.frame(Serie_sigla_semUF = c(dplyr::filter(list.pred, Regr_106 == 1)$Serie_sigla_semUF))
+
+for(e in siglas.hier.fact){
+  
+  temp.df.r <- data.frame(Serie_sigla_semUF = rownames(corrTable[[e]]$r),
+                        e = as.data.frame(corrTable[[e]]$r)[,1])
+  names(temp.df.r)[2] <- e
+  
+  
+  
+  temp.df.p <- data.frame(Serie_sigla_semUF = rownames(corrTable[[e]]$P),
+                        p = as.data.frame(corrTable[[e]]$P)[,1])
+  names(temp.df.p)[2] <- paste0(e, "_pvalue")
+  
+  
+  
+  corr.pred.vs.y <- left_join(corr.pred.vs.y, temp.df.r, by = "Serie_sigla_semUF")
+  corr.pred.vs.y <- left_join(corr.pred.vs.y, temp.df.p, by = "Serie_sigla_semUF")
+  
+}
+
+corr.pred.vs.y %>% data.table::fwrite(file = "Correlacoes_series_pred_vs_y_por_estado_com_pvalue.csv")
+
+```
+
+
+## Criando data.frame com os novos nomes das séries (incluindo y) para substituir em banco de dados para plot
+```{r}
+
+all.series.names <- data.frame(Serie = c(
+  "Produc_graos",
+  "Cambio_real",
+  "Preco_madeira",
+  "Ativ_global",
+  "Preco_carne",
+  "Preco_cafe",
+  "Preco_soja",
+  "Preco_acucar",
+  "Invest_infra",
+  "PIB_agro",
+  "Autu_infra",
+  "Lei_crimes",
+  "Gini_index",
+  "Area_desmat"),
+  Serie_sigla_semUF = sort(as.character(unique(db.plot.pred.std$Serie_sigla_semUF)))
+)
+
+#class(all.series.names)
+
+#names(all.series.names) <- sort(as.character(unique(db.plot.pred.std$Serie_sigla_semUF)))
+
+all.series.names
+
+```
+
+## Criando banco de dados para mudar os nomes das séries, com base no estado da BA, que tem todas as séries
+```{r}
+
+db.plot.std.new.names <- db.plot.pred.std %>% dplyr::filter(Estado == "BA")
+
+db.plot.std.new.names <- left_join(db.plot.std.new.names, all.series.names, by = "Serie_sigla_semUF")
+
+#all.series.names["MA_N_LEICRIMESAMB-dummy"]
+
+
+```
+
+### Preparando labels para as séries temporais - fazendo alternar posição de 1 em 1
+```{r}
+### CRIANDO OBJETO PARA AS LEGENDAS DAS LINHAS
+series_pred_labels <- data.frame()
+
+# com estado na primeira posição  
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(e,rep(NA, 32)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+# com estado no meio (posição 17)
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(rep(NA, 16),e,rep(NA, 16)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+series_state_labels <- c()
+# com estado na primeira posição  
+for (i in 1:(length(statesBR$Sigla))) {
+  
+  series_state_labels <- c(series_state_labels,
+    rep(NA, i), statesBR$Sigla[i], rep(NA,32 - i)
+  )
+  #temp <- as.data.frame(c(e,rep(NA, 32)))
+  #series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+
+class(series_state_labels)
+
+series_state_labels <- as.character(series_state_labels$`c(e, rep(NA, 32))`)
+
+series_state_labels <- as.character(series_state_labels$`c(rep(NA, 16), e, rep(NA, 16))`)
+```
+
+
+## Plot de linhas (séries) dos preços das commodities
+```{r}
+
+# vetor com as séries que devem ser plotadas
+series.prec <- all.series.names[c(3,5,6,7,8),1]
+
+## Tentativa de labels
+pred.labels <- (db.plot.std.new.names %>% dplyr::filter(Estado == "BA" & Serie %in% series.prec))$Serie
+
+### PLOT ####
+
+db.plot.std.new.names %>% dplyr::filter(Estado == "BA" & Serie %in% series.prec) %>% 
+  ggplot(
+    aes(
+    x = Ano,
+    y = value,
+    color = Serie
+  )) + 
+  geom_line(
+  size = 1.5,
+  alpha = 0.5
+  ) + 
+  labs(y = "Valor padronizado", color = "Série:") +
+  theme_bw(base_size = 15) +
+  theme(legend.position = "bottom",
+        legend.text = element_text(size = 11),
+        legend.spacing.x = unit(0.3, "lines")) +
+  guides(color = guide_legend(override.aes = list(size=2))) #+
+   #ggrepel::geom_label_repel(label = pred.labels,
+   #                       #nudge_x = 2,
+   #                       show.legend = FALSE,
+   #                       force = 100,
+   #                       size = 2.5,
+   #                       segment.color = "black",
+   #                       label.padding = 0.1) 
+```
+
+## Plot de linhas (séries) dos indicadores econômicos
+```{r}
+
+# vetor com as séries que devem ser plotadas
+series.econ <- all.series.names[c(2,4,9,10,13),1]
+
+### PLOT ####
+
+db.plot.std.new.names %>% dplyr::filter(Serie %in% series.econ) %>% 
+  ggplot() + geom_line(
+  aes(
+    x = Ano,
+    y = value,
+    color = Serie
+  ),
+  size = 1.5,
+  alpha = 0.5
+) + 
+  labs(y = "Valor padronizado", color = "Série:") +
+  theme_bw(base_size = 15) +
+  theme(legend.position = "bottom",,
+        legend.text = element_text(size = 11),
+        legend.spacing.x = unit(0.3, "lines")) +
+  guides(color = guide_legend(override.aes = list(size=2)))
+```
+
+## Plot de linhas (séries) dos preços das commodities
+```{r}
+
+# vetor com as séries que devem ser plotadas
+series.econ <- all.series.names[c(2,4,9,10),1]
+
+### PLOT ####
+
+db.plot.std.new.names %>% dplyr::filter(Serie %in% series.econ) %>% 
+  ggplot() + geom_line(
+  aes(
+    x = Ano,
+    y = value,
+    color = Serie
+  ),
+  size = 1
+) + 
+  labs(y = "Valor padronizado", color = "Série:") +
+  theme_bw() +
+  theme(legend.position = "bottom",
+        legend.text = )
+```
+
+
+######### EXPLORANDO A SÉRIE TIMBER PARA VER SE FICAVA OU NÃO NO SET FINAL #########
+
+## Organizando banco de dados da série de índices TIMBER com e sem deflação
+```{r}
+
+TIMBER.nom <- pred %>% dplyr::filter(Serie_sigla_semUF == "EC_G_COMMOD.TIMBER-indice")
+
+TIMBER.real <- pred %>% dplyr::filter(Serie_sigla_semUF == "EC_G_COMMOD.TIMBER-realindice")
+
+TIMBER.db <- rbind(TIMBER.nom, TIMBER.real)
+
+TIMBER.db[3,] <- names(TIMBER.db)
+
+TIMBER.db.plot <- TIMBER.db %>% dplyr::select(Serie_sigla_semuf, all_of(as.character(anos.total)))
+
+TIMBER.db.plot.wide <- as.data.frame(data.table::transpose(TIMBER.db.plot, make.names = "Serie_sigla_semuf"))
+TIMBER.db.plot.wide <- as.data.frame(apply(TIMBER.db.plot.wide, MARGIN = 2, as.numeric))
+
+
+
+```
+
+## Plot das séries TIMBEr
+```{r}
+
+TIMBER.db.plot.wide %>%  ggplot() +
+  geom_line(aes(
+    x = Serie_sigla_semuf,
+    y = `EC_G_COMMOD.TIMBER-indice`
+  ))
+
+TIMBER.db.plot.wide %>%  ggplot() +
+  geom_line(aes(
+    x = Serie_sigla_semuf,
+    y = `EC_G_COMMOD.TIMBER-realindice`
+  ))
+
+```
+
+## Plot Regr_97 - TIMBER real
+```{r}
+
+
+### tentativa usando funções que já criei antes
+# cria banco de dados long para pegar a série que quer - replica para todos os estados...
+temp.db.pred <-   create.db.plot.ypred(db.regrXX.std$Regr_97)
+
+temp.db.pred %>% dplyr::filter(Serie_sigla_semUF == "EC_G_COMMOD.TIMBER-realindice" | Serie_sigla_semUF == "y") %>% 
+  ggplot() +
+  geom_line(aes(
+    x = Ano,
+    y = value,
+    color = Serie_sigla_semUF
+  )) +
+  facet_wrap(~Estado) +
+  theme(legend.position = "none")
+
+glimpse(temp.db.pred)
+
+```
+
+## Plot Regr_95 - TIMBER nominal
+```{r}
+
+
+### tentativa usando funções que já criei antes
+# cria banco de dados long para pegar a série que quer - replica para todos os estados...
+temp.db.pred <-   create.db.plot.ypred(db.regrXX.std$Regr_95)
+
+temp.db.pred %>% dplyr::filter(Serie_sigla_semUF == "EC_G_COMMOD.TIMBER-indice" | Serie_sigla_semUF == "y") %>% 
+  ggplot() +
+  geom_line(aes(
+    x = Ano,
+    y = value,
+    color = Serie_sigla_semUF
+  )) +
+  facet_wrap(~Estado) +
+  theme(legend.position = "none")
+
+glimpse(temp.db.pred)
+
+```
+
+## Plot Regr_09 - Futures Lumber - média
+```{r}
+
+
+### tentativa usando funções que já criei antes
+# cria banco de dados long para pegar a série que quer - replica para todos os estados...
+temp.db.pred <-   create.db.plot.ypred(db.regrXX.std$Regr_09)
+
+temp.db.pred %>% dplyr::filter(Serie_sigla_semUF == "EC_G_PREC.MadeiraMedia-USD" | Serie_sigla_semUF == "y") %>% 
+  ggplot() +
+  geom_line(aes(
+    x = Ano,
+    y = value,
+    color = Serie_sigla_semUF
+  )) +
+  facet_wrap(~Estado) +
+  theme(legend.position = "none")
+
+glimpse(temp.db.pred)
+
+```
+
+## Plot Regr_100 - Produção madeira em tora
+```{r}
+
+
+### tentativa usando funções que já criei antes
+# cria banco de dados long para pegar a série que quer - replica para todos os estados...
+temp.db.pred <-   create.db.plot.ypred(db.regrXX.std$Regr_100)
+
+temp.db.pred %>% dplyr::filter(Serie_sigla_semUF == "MD_E_PRODUC.tora-m3" | Serie_sigla_semUF == "y") %>% 
+  ggplot() +
+  geom_line(aes(
+    x = Ano,
+    y = value,
+    color = Serie_sigla_semUF
+  )) +
+  facet_wrap(~Estado) +
+  theme(legend.position = "none")
+
+glimpse(temp.db.pred)
+
+```
+
+
+
+######### EXPLORANDO A SÉRIE DE REBANHOS PARA VER SE FICAVA OU NÃO NO SET FINAL #########
+
+## Plot Regr_99 - Efetivo de rebanhos
+```{r}
+
+
+### tentativa usando funções que já criei antes
+# cria banco de dados long para pegar a série que quer - replica para todos os estados...
+temp.db.pred <-   create.db.plot.ypred(db.regrXX.std$Regr_99)
+
+temp.db.pred %>% dplyr::filter(Serie_sigla_semUF == "PE_E_REBANHO.bovinos-cabecas" | Serie_sigla_semUF == "y") %>% 
+  ggplot() +
+  geom_line(aes(
+    x = Ano,
+    y = value,
+    color = Serie_sigla_semUF
+  )) +
+  facet_wrap(~Estado) +
+  theme(legend.position = "none")
+
+glimpse(temp.db.pred)
+
+```
