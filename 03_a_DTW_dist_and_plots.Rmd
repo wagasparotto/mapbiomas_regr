@@ -1,0 +1,295 @@
+---
+title: "DTW_plots"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Calculando distâncias DTW entre 2 estados
+```{r}
+
+# def_ts_data_t_std %>% fwrite(file = "def_ts_data_t_std.csv")
+
+teste_dist_2est <- def_ts_data_t_std %>% 
+  dplyr::filter(rownames(.) %in% c("AM","AL"))
+
+# rownames(def_ts_data_t_std) %in% c("AM","AL")
+
+(teste_eucl_2est <- teste_dist_2est %>% 
+  proxy::dist())
+# Euclidean = 7.6764
+
+# com função dtw - Euclidean (default)
+(teste_eucl_2est_1 <- dtw(as.numeric(teste_dist_2est[1,]), 
+                       as.numeric(teste_dist_2est[2,]),
+                       dist.method = "Euclidean",
+                       # pairwise = TRUE, # não teve efeito!
+                       keep = TRUE))
+# deve ter algo de errado com o input !
+#  Argument dist.method does not usually make a difference with single-variate timeseries
+
+# distância calculada não é a euclidiana apesar de pedido!
+teste_eucl_2est_1$distance
+
+dtwPlotTwoWay(teste_eucl_2est_1,
+              offset = 5)
+
+#funciona o plot threeway apesa do aviso de antes...
+dtwPlotThreeWay(teste_eucl_2est_1)
+
+ts1 <- ts(teste_dist_2est[1,])
+ts2 <- ts(teste_dist_2est[2,])
+
+# com função dtw - Euclidean (default)
+(teste_eucl_2est_2 <- dtw(x = ts1, 
+                       y = ts2,
+                       dist.method = "Euclidean",
+                       keep = TRUE))
+# não aparece mais o aviso, mas também não faz mais o plot
+
+teste_eucl_2est_2$distance
+
+dtwPlotTwoWay(teste_eucl_2est_2,
+              offset = 5)
+
+dtwPlotThreeWay(teste_eucl_2est_2)
+
+ts <- NULL    
+ts <- ts(teste_dist_2est)
+
+# com função dtw - Euclidean (default)
+(teste_eucl_2est_3 <- dtw(x = ts,
+                       dist.method = "Euclidean",
+                       keep = TRUE))
+
+dtwPlotTwoWay(teste_eucl_2est_3,
+              offset = 5)
+
+  ####################################################################
+
+# com função dtw 
+(teste_dtw_2est <- dtw(as.numeric(teste_dist_2est[1,]), 
+                       as.numeric(teste_dist_2est[2,]) ,
+                       keep.internals = TRUE, # mantém as séries no objeto
+                       dist.method = "dtw",
+                       window.type = "sakoechiba",
+                       window.size = 3L #,
+                       #step.pattern = "asymmetricP1"
+                       ))
+
+teste_dtw_2est$distance
+# Euclidean 7.6764
+# DTW sem restrições 26.70368
+
+dtwPlotTwoWay(d = teste_dtw_2est,
+              xts = as.numeric(teste_dist_2est[1,]),
+              yts = as.numeric(teste_dist_2est[2,]),
+              offset = 5,
+              match.indices = c(1,2,3,4,5),
+              match.col = "blue"
+              )
+
+class(teste_dtw_2est)
+
+# dtwPlotThreeWay(teste_dtw_2est)
+
+```
+
+# exemplo do help dtwPlotTwoWay
+```{r}
+idx<-seq(0,6.28,len=100);
+query<-sin(idx)+runif(100)/10;
+template<-cos(idx)
+dtw(query,template,step=asymmetricP1)->alignment;
+
+
+idx<-seq(0,6.28,len=100);
+query<-sin(idx)+runif(100)/10;
+template<-cos(idx)
+dtw(query,template)->alignment;
+
+class(query)
+
+## Equivalent to plot(alignment,xts=query,yts=template,type="two");
+dtwPlotTwoWay(alignment,xts=query,yts=template);
+
+alignment$windowFunction
+alignment$stepPattern
+alignment$stepsTaken
+```
+
+# aprendendo a calcular as distâncias euclidianas com proxy::dist
+# e plotando o objeto dtw com window.size = 0 (quase igual a Eucl...)
+```{r}
+#### CALCULANDO DISTÂNCIAS EUCLIDIANAS COM 2 TIPOS DE OBJETOS (DF E TS) ###
+(teste_dist_2est %>% # com data.frame
+  proxy::dist())
+# Euclidean = 7.6764
+
+teste_eucl <- ts %>%  # com objeto time-series
+  proxy::dist(by_rows = TRUE)
+# Euclidean = 7.6764
+
+# Euclidean = 7.6764
+
+### DISTÂNCIAS IGUAIS!
+
+(ts %>%  # com objeto time-series
+  proxy::dist(pairwise = TRUE))
+
+################################
+#teste_eucl <- ts %>%  # com objeto time-series
+#  proxy::dist(by_rows = TRUE)
+# Euclidean = 7.6764
+
+```
+
+# plot com dtw window size = 0 
+```{r}
+(dtw(ts[1,],ts[2,], window.type = "sakoechiba", window.size = 1L)$distance)
+
+#o equivalente ao euclidiano é window.size = 0 --> ZERO!!!!
+teste_dtw <- dtw(ts[1,],
+                 ts[2,], 
+                 #dist.method = "Euclidean",
+                 window.type = "sakoechiba", 
+                 window.size = 0L,
+                 keep.internals = TRUE)
+
+# plot 1 a 1 como na euclidiana
+dtwPlotTwoWay(teste_dtw, offset = 5)
+
+sqrt(teste_dtw$distance)
+# 7.752933 <<< muito próximo mas não igual a euclidiana
+# parece que há arredondamento na segunda casa decimal!
+
+as.data.frame(teste_dtw$costMatrix)
+teste_dtw$index1
+teste_dtw$index2
+teste_dtw$index1s
+teste_dtw$normalizedDistance
+as.data.frame(teste_dtw$localCostMatrix) ###<<<<<<<<<<<<<
+teste_dtw$stepsTaken
+
+```
+
+# plot com dtw window size = 1
+```{r}
+
+#o equivalente ao euclidiano é window.size = 0 --> ZERO!!!!
+teste_dtw_ws1 <- dtw(ts[1,],
+                 ts[2,], 
+                 #dist.method = "Euclidean",
+                 window.type = "sakoechiba", 
+                 window.size = 1L,
+                 keep.internals = TRUE)
+
+# plot 1 a 1 como na euclidiana
+dtwPlotTwoWay(teste_dtw_ws1, offset = 5)
+
+sqrt(teste_dtw_ws1$distance)
+# 6.6867 <<< menor do que a euclidiana (mas não sei se essa comparação é válida) # 
+```
+
+# plot com dtw window size = 2
+```{r}
+
+#o equivalente ao euclidiano é window.size = 0 --> ZERO!!!!
+teste_dtw_ws2 <- dtw(ts[1,],
+                 ts[2,], 
+                 #dist.method = "Euclidean",
+                 window.type = "sakoechiba", 
+                 window.size = 2L,
+                 keep.internals = TRUE)
+
+# plot 1 a 1 como na euclidiana
+dtwPlotTwoWay(teste_dtw_ws2, offset = 5)
+
+sqrt(teste_dtw_ws2$distance)
+# 6.6867 <<< menor do que a euclidiana (mas não sei se essa comparação é válida) # 
+```
+
+# plot two way euclidean # não consegui!
+```{r}
+
+# do help do dtwPlotTwoWay:
+# precisa de um objeto dtw
+#plot(alignment,offset=-2,type="two", lwd=3, match.col="grey50",
+     #match.indices=hi,main="Match lines shown every pi/4 on query");
+
+## Display the mapping, AKA warping function - may be multiple-valued
+## Equivalent to: plot(alignment,type="alignment")
+plot(alignment$index1,alignment$index2,main="Warping function");
+
+
+dtwDist(ts, dist.method = "Euclidean")
+
+dtw(ts)$distance
+
+demo(dtw)
+
+#Cost matrices (both input and output) have query elements arranged row-wise #(first index), and
+#reference elements column-wise (second index).
+```
+
+# aprendendo a calcular as distâncias dtw com proxy::dist
+```{r}
+#### CALCULANDO DISTÂNCIAS EUCLIDIANAS COM 2 TIPOS DE OBJETOS (DF E TS) ###
+(teste_dist_2est %>% # com data.frame
+  proxy::dist(method = "dtw",
+              window.size = 3L))
+# Euclidean = 7.6764
+# DTW = 26.70368
+
+(ts %>%  # com objeto time-series
+  proxy::dist(method = "dtw"))
+# Euclidean = 7.6764
+# DTW = 26.70368
+
+### DISTÂNCIAS IGUAIS!
+
+
+```
+
+# calculando uma local cost matrix (para input no dtw)
+```{r}
+
+# dtw() calcula as distâncias através de proxy::dist
+
+```
+
+
+# Teste com dados não transpostos
+```{r}
+####### TESTE COM DADOS NÃO TRANSPOSTOS
+teste_dist_2est <- def_ts_data_t_std %>% 
+  dplyr::filter(rownames(.) %in% c("AC","AL"))
+
+# com função dtw (Euclidean)
+(teste_dtw_2est_NOTt <- dtw(teste_dist_2est_notT[,1], 
+                       teste_dist_2est_notT[,2],
+  dist.method = "dtw"))
+
+teste_dtw_2est$distance
+
+def_hclust_eucl$
+  
+  dtw
+ 
+# tsclust usa proxy::dist()
+  
+    proxy::dist(
+
+  )
+  
+  proxy::dist(
+    method = "dtw",
+    window.type = "sakoechiba", 
+    window.size = 1L
+  )
+```
+
