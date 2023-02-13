@@ -1,0 +1,383 @@
+---
+title: "Def_clusters_finais"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Tabela 'def' apenas com o cluster escolhido: HIERARQ. EUCLID. WARD K=7
+```{r}
+
+# formato wide (se precisar juntar nessa)
+def_ts_data_t_std
+
+def_cluster_final <- as.data.frame(cutree(def_hclust_ward_eucl, k = 7))
+def_cluster_final <- rownames_to_column(def_cluster_final, "Estado")
+colnames(def_cluster_final)[2]<- "Cluster"
+
+## utilizando a base original e fazendo o join
+def_data_cluster_final <- def_data %>% inner_join(def_cluster_final,
+                                                      by = "Estado")
+
+def_data_cluster_final <- def_data_cluster_final %>% 
+  dplyr::group_by(Estado) %>% 
+  dplyr::mutate(Total_level1_std = scale(Total_level1) %>% as.vector())
+
+```
+
+# Criando vetor com a ordem dos clusters e alfabética
+```{r}
+
+cluster_order <- dplyr::arrange(def_cluster_final, Cluster, Estado)
+
+```
+
+# Reordenand os dados de correlação de acordo com os clusters
+# Criando a matriz de correlação
+```{r}
+
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+# cria os dados para a matriz de correlação (padronizados)
+
+# ajustando a ordem da tabela
+
+def_ts_data_std %>% dplyr::select(cluster_order[,1])
+
+def_corr_std_data_cluster <- 
+  def_ts_data_std %>% 
+  dplyr::select(cluster_order[,1]) %>% 
+  as.matrix() %>% 
+  Hmisc::rcorr(type = "pearson")
+```
+
+# Matriz de correlação ordenada pelos números dos clusters ward_eucl_k7
+## Plot da matriz de correlações (corrplot)
+```{r}
+
+
+# upper com os coeficientes junto com X nos insignificantes e SALVA EM OBJETO!
+corrplot(def_corr_std_data_cluster$r,
+         method = 'square',
+         type = 'lower',
+         order = 'original', # par apuxar do data frame <- ordenar como quiser!
+         addCoef.col = "black",
+         number.cex = 0.35, # tamanho dos coeficientes
+         #tl.pos = 'd',
+         diag = FALSE,
+         tl.col = "black",
+         tl.cex = 0.7,
+         cl.pos = 'b', # posição da legenda de cores
+         col = COL2("PiYG") #,
+         #p.mat = def_corr_std_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "pch"
+         #insig='blank' # para deixar em branco ao invés de colocar X
+)
+
+# em cima um tipo e embaixo outro
+corrplot.mixed(def_corr_std_data_cluster$r, 
+         upper = 'square',
+         lower = 'number',
+         lower.col = 'black',
+         order = 'original',
+         bg = 'grey80',
+         diag = NULL,
+         tl.pos = 'lt',
+         tl.col = 'black',
+         tl.cex = 0.8,
+         number.cex = 0.3,
+         number.digits = 2
+         #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "blank"
+         )
+
+```
+
+
+# Reordenand os dados de correlação de acordo com os ESTADOS DO DENDROGRAMA
+# Criando a matriz de correlação
+```{r}
+
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+# cria os dados para a matriz de correlação (padronizados)
+
+# vetor com a ordem dos estados segundo o dendrograma
+# ordem dos estados no cluster hierárquico (valores igual a 1 a 27 e levels = estados)
+#states.hier.order <- factor(seq(1,27,1), levels = seq(1,27,1))
+
+states.hier.order <- c("PB","RN","PE","CE","BA","SC","ES","SP","AL","RJ","SE","GO","MS","MG","DF","PR","AP","MA","TO","PA","AC","MT","RO","PI","RS","AM","RR")
+
+
+# ajustando a ordem da tabela
+
+#def_ts_data_std %>% dplyr::select(cluster_order[,1])
+
+def_corr_std_data_states <- 
+  def_ts_data_std %>% 
+  dplyr::select(all_of(states.hier.order)) %>% 
+  as.matrix() %>% 
+  Hmisc::rcorr(type = "pearson")
+```
+
+
+
+
+# Matriz de correlação ordenada pelos ESTADOS em relação ao dendrograma
+## Plot da matriz de correlações (corrplot)
+```{r}
+
+# em cima um tipo e embaixo outro
+corrplot.mixed(def_corr_std_data_states$r, 
+         upper = 'square',
+         lower = 'number',
+         lower.col = 'black',
+         order = 'original',
+         bg = 'grey80',
+         diag = NULL,
+         tl.pos = 'lt',
+         tl.col = 'black',
+         tl.cex = 0.8,
+         number.cex = 0.35,
+         number.digits = 2
+         #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "blank"
+         )
+
+```
+
+
+
+## retirar correlações não significativas!!!
+## ver no script de geostat (summary)
+
+## Plot da matriz de correlações com dendograma (heatmaply_cor)
+```{r}
+
+#pacote heatmaply
+
+heatmaply_cor(
+  def_corr_std_data_cluster$r,
+  #node_type = "scatter",
+  #limits = c(-1, 1), # para forçar os limites de -1 a 1
+  #point_size_mat = (abs(def_corr_std_data$r)), # dá pra excluir a diagonal por aqui
+  plot_method = "plotly", # plotly --> fica melhor
+  #grid_gap = 1, #???
+  #colors = viridis(n=256, alpha = 1, begin = 0, end = 1, option = "viridis"),
+  
+  hclustfun = hclust,  # default é hclust / tsclust usa dados transpostos
+  distfun = proxy::dist,
+  
+  hclust_method = "ward.D2", # /single / complete / average / centroid
+  dist_method = "euclidean", # euclidean, maximum, manhattan, canberra, binary, minkowski
+  
+  #hclustfun_col = "euclidean",
+  #hclustfun_row = "ward.D2",
+  #distfun_row = "euclidean",
+  #distfun_col
+  
+  k_row = 7, # número de cores na matriz de correlação
+  k_col = 7,
+  
+  #draw_cellnote = TRUE, # coloca os coeficientes sobre os pontos
+  #cellnote = def_corr_std_data$r, # valores a plotar - poderia retirar metade 
+  #cellnote_size = 0.01,
+  
+  file = "def_corr_plot_com_hclust_ward_eucl_k7_v2.png", # se utilizar .html salva arquivo interativo!
+  width = 1200,
+  height = 900,
+  
+  #xlab = c("7 clusters"), # colunas
+  ylab = c("7 clusters"), # linhas
+  
+  grid_size = 1 #,
+  
+)
+
+```
+
+
+
+
+######## FAZENDO PARA O K-MEANS - TIRAR DÚVIDA SE É MELHOR OU NÃO #######
+
+# Tabela 'def' apenas com o cluster escolhido: HIERARQ. EUCLID. WARD K=7
+```{r}
+
+# formato wide (se precisar juntar nessa)
+def_ts_data_t_std
+
+def_cluster_final <- as.data.frame(def_kmeans_eucl_k7$cluster)
+def_cluster_final <- rownames_to_column(def_cluster_final, "Estado")
+colnames(def_cluster_final)[2]<- "Cluster"
+
+## utilizando a base original e fazendo o join
+def_data_cluster_final <- def_data %>% inner_join(def_cluster_final,
+                                                      by = "Estado")
+
+def_data_cluster_final <- def_data_cluster_final %>% 
+  dplyr::group_by(Estado) %>% 
+  dplyr::mutate(Total_level1_std = scale(Total_level1) %>% as.vector())
+
+```
+
+# Criando vetor com a ordem dos clusters e alfabética
+```{r}
+
+cluster_order <- dplyr::arrange(def_cluster_final, Cluster, Estado)
+
+```
+
+# Reordenand os dados de correlação de acordo com os clusters
+# Criando a matriz de correlação
+```{r}
+
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+# cria os dados para a matriz de correlação (padronizados)
+
+# ajustando a ordem da tabela
+
+def_corr_std_data_cluster <- 
+  def_ts_data_std %>% 
+  dplyr::select(cluster_order[,1]) %>% 
+  as.matrix() %>% 
+  Hmisc::rcorr(type = "pearson")
+```
+
+# Matriz de correlação ordenada pelos números dos clusters ward_eucl_k7
+## Plot da matriz de correlações (corrplot)
+```{r}
+
+
+# upper com os coeficientes junto com X nos insignificantes e SALVA EM OBJETO!
+corrplot(def_corr_std_data_cluster$r,
+         method = 'square',
+         type = 'lower',
+         order = 'original', # par apuxar do data frame <- ordenar como quiser!
+         addCoef.col = "black",
+         number.cex = 0.35, # tamanho dos coeficientes
+         #tl.pos = 'd',
+         diag = FALSE,
+         tl.col = "black",
+         tl.cex = 0.7,
+         cl.pos = 'b', # posição da legenda de cores
+         col = COL2("PiYG") #,
+         #p.mat = def_corr_std_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "pch"
+         #insig='blank' # para deixar em branco ao invés de colocar X
+)
+
+# em cima um tipo e embaixo outro
+corrplot.mixed(def_corr_std_data_cluster$r, 
+         upper = 'square',
+         lower = 'number',
+         lower.col = 'black',
+         order = 'original',
+         bg = 'grey80',
+         diag = NULL,
+         tl.pos = 'lt',
+         tl.col = 'black',
+         tl.cex = 0.8,
+         number.cex = 0.3,
+         number.digits = 2
+         #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "blank"
+         )
+
+```
+
+
+######## COMPARANDO OS DOIS CLUSTER ########
+
+### Comparing 2 hclust (tanglegram)
+```{r}
+# não sei direito o que significa - retirado do scrip da Adriana - clustering
+tanglegram(def_hclust_dtw, 
+           def_hclust_eucl, 
+           main = paste("Emaranhado =", 
+                        round(entanglement(
+                          dendlist(
+                            as.dendrogram(def_hclust_dtw),
+                            as.dendrogram(def_hclust_eucl))),
+                          2)))
+
+```
+
+
+### Visualizando o silhouette para ambos
+```{r}
+
+### HIERÁRQUICO
+# Enhanced hierarchical clustering
+teste_hclust <- eclust(def_ts_data_t_std, "hclust", k = 7,
+                method = "ward.D2", graph = FALSE) 
+
+
+fviz_silhouette(teste_hclust)
+
+### KMEANS
+# K-means clustering
+teste_kmeans <- eclust(def_ts_data_t_std, "kmeans", k = 7,
+                 nstart = 25, graph = FALSE)
+
+fviz_cluster(teste_kmeans)
+
+# Visualize the silhouette of clusters
+fviz_silhouette(teste_kmeans)
+
+
+### PEGANDO OS CENTRÓIDES DO HIERÁQUICO
+
+grp <- teste_hclust$cluster
+
+# Compute cluster centers
+clus.centers <- aggregate(def_ts_data_t_std, list(grp), mean)
+clus.centers
+
+# Remove the first column
+clus.centers <- clus.centers[, -1]
+clus.centers
+
+
+km.res2 <- eclust(def_ts_data_t_std, "kmeans", k = clus.centers, graph = FALSE)
+fviz_silhouette(km.res2)
+
+# res.hc$cluster: Initial clusters defined using hierarchical clustering
+# km.res2$cluster: Final clusters defined using k-means
+table(km.res2$cluster, teste_hclust$cluster)
+
+fviz_dend(teste_hclust, k = 4, 
+          k_colors = c("blue", "green3", "red", "black"),
+          label_cols =  teste_kmeans$cluster[teste_hclust$order], cex = 0.6)
+
+# SP E TO TROCARAM DE LUGAR, IGUAL AO RESULTADO SEM OS CENTROS DO HIERÁRQUICO
+
+```
+
+### Método híbrido de k-means x hieráquico (função hk...)
+#### Apenas SP e TO mudam de cluster!
+```{r}
+
+# Compute hierarchical k-means clustering
+res.hk <-hkmeans(def_ts_data_t_std, 7)
+
+# Visualize the tree
+fviz_dend(res.hk, cex = 0.6, rect = TRUE)
+
+# Visualize the hkmeans final clusters
+fviz_cluster(res.hk, frame.type = "norm", frame.level = 0.68) # '1 std'
+fviz_cluster(res.hk, frame.type = "t")
+fviz_cluster(res.hk, ellipse.type = "euclid")
+fviz_cluster(res.hk, ellipse.type = "convex")
+fviz_cluster(res.hk, ellipse.type = "confidence")
+fviz_cluster(res.hk)
+
+```
+
