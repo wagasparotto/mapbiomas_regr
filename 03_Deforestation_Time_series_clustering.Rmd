@@ -1,0 +1,1605 @@
+---
+title: "Time_series_clustering"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Packages (repeated, only essential for ts clustering)
+```{r}
+# pacotes necessários (já incluídos no outro script principal Data Wrangling)
+install.packages("dtw")
+install.packages("dtwclust")
+install.packages("factoextra")
+install.packages("ggdendro")
+library(dtw)
+library(dtwclust)
+library(factoextra)
+library(ggdendro)
+```
+
+# Deforestation time series clustering
+
+## Data Wrangling - part 1 - source data dcast
+```{r}
+head(def_data)
+
+# converte de long para wide os dados de Desmatamento, utilizando o ano como base e Estado como gupo, com os valores de Total_level1.
+
+def_ts_data <- def_data %>% 
+  dplyr::select(Estado, Ano, Total_level1) %>% 
+  dcast(formula = Ano ~ Estado)
+
+# é necessário repetir o processo para cada um dos campos que se queira trabalhar (ou tem algum jeito de fazer várias colunas de valores repetindo o nome dos estados?)
+
+# TESTE
+# utilizou o Total_level1 como valor automaticamente quando value.var não foi explicitado. Gera erro quando tenta mandar mais de um valor.
+def_ts_data_test <- def_data %>%  
+  dcast(formula = Ano ~ Estado,
+        value.var = c("1_Supres_veg_prim","Total_level1"))
+
+rm(def_ts_data_test)
+
+```
+
+## Data wrangling - part 2 - transpose to use as time series
+```{r}
+# Dados:
+head(def_ts_data)
+# 1987 a 2019
+# 27 estados
+
+# transposição da matriz def_ts_data
+def_ts_data_t <- def_ts_data %>% transpose(
+    make.names = "Ano" #converte a primeira coluna em headers
+    )
+# coloca o nome dos estados nas linhas
+rownames(def_ts_data_t) <- colnames(def_ts_data)[2:28]
+```
+
+
+
+
+
+# CORRELATION MATRIX
+
+## Cálculo das correlações com pacote Hmisc
+```{r}
+
+# utilizar os dados de desmatamento no formato wide (estados nas colunas)
+# def_ts são apenas os dados numéricos, sem uma coluna de ano, adequado para o caso
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+def_corr_data <- def_ts %>% as.matrix() %>% Hmisc::rcorr(type = "pearson")
+
+def_corr_std_data <- def_ts_data_std[,2:28] %>% as.matrix() %>% Hmisc::rcorr(type = "pearson")
+
+```
+
+## Plot da matriz de correlações (chart.Correlation)
+### Muito ruim - muitos estados - plot embaralhado - não tem opção para expandir
+```{r}
+
+PerformanceAnalytics::chart.Correlation(
+  def_ts,
+  method = "pearson",
+  histogram = TRUE)
+
+```
+
+## Plot da matriz de correlações (corrplot)
+```{r}
+
+# plot com pacote corrplot
+corrplot(def_corr_std_data$r) # correlation coeficients 'r' (existem os p-values em $p)
+
+# upper com os coeficientes junto com X nos insignificantes e SALVA EM OBJETO!
+corrplot(def_corr_std_data$r,
+         method = 'square',
+         type = 'lower',
+         addCoef.col = "black",
+         number.cex = 0.35, # tamanho dos coeficientes
+         #tl.pos = 'd',
+         diag = FALSE,
+         tl.col = "black",
+         tl.cex = 0.7,
+         cl.pos = 'b', # posição da legenda de cores
+         col = COL2("PiYG") #,
+         #p.mat = def_corr_std_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "pch"
+         #insig='blank' # para deixar em branco ao invés de colocar X
+)
+
+# outre cima um tipo e embaixo outro
+corrplot.mixed(def_corr_std_data$r, 
+         upper = 'square',
+         lower = 'number',
+         lower.col = 'black',
+         bg = 'grey80',
+         diag = NULL,
+         tl.pos = 'lt',
+         tl.col = 'black',
+         tl.cex = 0.8,
+         number.cex = 0.3,
+         number.digits = 2
+         #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "blank"
+         )
+
+```
+
+## Plot da matriz de correlações com retângulos nos h-clusters (escolhendo método)
+```{r}
+
+# upper com os coeficientes junto com X nos insignificantes e SALVA EM OBJETO!
+corrplot(def_corr_std_data$r,
+         method = 'square', # forma de cada correlação
+         #type = 'lower',
+         order = 'hclust', # ordena pelos clusters
+         #hclust.method = "single", # complete, average, median, centroid ...
+         hclust.method = "ward.D2", # escolhe método do hclust
+         addrect = 7, # número de retângulos-clusters a serem salientados
+         addCoef.col = "black", # cor dos coeficientes
+         number.cex = 0.35, # tamanho dos coeficientes
+         #tl.pos = 'd',
+         diag = FALSE, # plotar ou não a diagonal
+         tl.col = "black",
+         tl.cex = 0.7, # tamanho das legendas (estados)
+         cl.pos = 'b', # posição da legenda de cores
+         col = COL2("PiYG") #, # paleta de cores
+         #p.mat = def_corr_std_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+         #sig.level = 0.05, 
+         #insig = "pch"
+)
+```
+
+## Plot da matriz de correlações com dendograma (heatmaply_cor)
+```{r}
+
+#pacote heatmaply
+
+heatmaply_cor(
+  def_corr_std_data$r,
+  #node_type = "scatter",
+  #limits = c(-1, 1), # para forçar os limites de -1 a 1
+  #point_size_mat = (abs(def_corr_std_data$r)), # dá pra excluir a diagonal por aqui
+  plot_method = "plotly", # plotly --> fica melhor
+  #grid_gap = 1, #???
+  #colors = viridis(n=256, alpha = 1, begin = 0, end = 1, option = "viridis"),
+  
+  hclustfun = hclust,  # default é hclust / tsclust usa dados transpostos
+  distfun = proxy::dist,
+  
+  hclust_method = "ward.D2", # /single / complete / average / centroid
+  dist_method = "dtw", # euclidean, maximum, manhattan, canberra, binary, minkowski
+  
+  #hclustfun_col = "euclidean",
+  #hclustfun_row = "ward.D2",
+  #distfun_row = "euclidean",
+  #distfun_col
+  
+  k_row = 7, # número de cores na matriz de correlação
+  k_col = 9,
+  
+  #draw_cellnote = TRUE, # coloca os coeficientes sobre os pontos
+  #cellnote = def_corr_std_data$r, # valores a plotar - poderia retirar metade 
+  #cellnote_size = 0.01,
+  
+  file = "def_corr_plot_com_hclust.png", # se utilizar .html salva arquivo interativo!
+  width = 1200,
+  height = 900,
+  
+  xlab = c("9 clusters"), # colunas
+  ylab = c("7 clusters"), # linhas
+  
+  grid_size = 0.2 #,
+  
+)
+
+```
+
+
+
+
+
+# HIERARCHICAL CLUSTERING
+
+## Hierarchical Clustering - Average linkage (method) - Euclidean Distance
+```{r}
+
+# função tsclust
+def_hclust_eucl <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  #k = 5L, # número de grupos
+  distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento usando z-scores
+)
+
+```
+
+## Hierarchical Clustering - Average linkage (method) - DTW distance
+```{r}
+# função tsclust
+def_hclust_dtw <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  #k = 5L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_dtw,
+                      k = 8,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+#plot para adicionar os retângulos
+plot(def_hclust_dtw,
+     hang = -1)
+# adiciona retânguloso em k grupos (deve ser comandado tudo junto com o plot)
+rect.hclust(def_hclust_dtw, k = 6)
+
+```
+
+
+
+## Different types of plots for the hierarchical cluster
+```{r}
+
+# 'regular' plot
+plot(def_hclust_eucl,
+     hang = -1, # labels na mesma altura
+     cex = 1 # tamanho da fonte
+     )
+
+# lista de cores para utilizar nos plots
+kcolors <- c("blue", "orange", "green", "red", "black", "pink", "purple", "brown", "cyan","darkgreen", "gold3")
+
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_eucl,
+                      k = 8,
+                      k_colors = "lancet")
+
+# extractor no formato circular com fviz (factoextra)
+factoextra::fviz_dend(def_hclust_eucl, type = "circular")
+
+  # plot no formato circular com fviz (factoextra)
+  factoextra::fviz_dend(def_hclust_eucl, 
+                        type = "circular",
+                        k = 6,
+                        k_colors = kcolors)
+
+  # plot no formato filogenético com fviz (factoextra)
+  factoextra::fviz_dend(def_hclust_eucl, type = "phylogenic")
+
+
+
+# transformar no tipo 'dendrogram' pode facilitar alguns tipos de plot
+(as.dendrogram(def_hclust_eucl))
+
+# para poder utilizar ggplot ou plotly precisa transformar os dados
+def_hclust_ggdend <- ggdendro::ggdendrogram(def_hclust_eucl)
+
+#plot com o ggplotly (interativo)
+ggplotly(def_hclust_ggdend)
+```
+
+
+
+## Hierarchical Clustering - Single linkage (nearest neighbor) method - DTW distance
+```{r}
+# função hclust
+def_hclust_single_dtw <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "single"), # modifica parâmetros de controle do hierárquico
+  #k = 5L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_single_dtw,
+                      k = 8,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+## Hierarchical clustering - Single linkage (nearest neighbor) method - Euclidean distance
+```{r}
+# função hclust
+def_hclust_single_eucl <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "single"), # modifica parâmetros de controle do hierárquico
+  #k = 5L, # número de grupos
+  distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_single_eucl,
+                      k = 8,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+
+## Hierarchical clustering - Ward's method - Euclidean distance
+```{r}
+# função hclust
+def_hclust_ward_eucl <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 7L, # número de grupos
+  distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_ward_eucl,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_ward_eucl,
+                      k = 7,
+                      k_colors = c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7"),
+                      rect = TRUE) # paleta de cores (F1 - help)
+
+seven.colors <- c("#F8766D", "#C49A00", "#53B400", "#00C094", "#00B6EB", "#A58AFF", "#FB61D7")
+
+
+```
+
+# CONFERÊNCIA GERANDO O CLUSTER HIERÁRQUICO DIRETAMENTE POR HCLUST
+## Hierarchical clustering - Ward's method - Euclidean distance - hclust
+```{r}
+
+# repetido - foi gerado na primeira parte do kmeans
+def_dist_eucl <- def_ts_data_t_std %>% get_dist(
+  method = "euclidean")
+
+# função hclust
+def_hclust_ward_eucl_fun_hclust <- hclust(def_dist_eucl,
+                                          method = "ward.D2")
+factoextra::fviz_dend(def_hclust_ward_eucl_fun_hclust,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+  
+
+```
+
+
+## Hierarchical clustering - Ward's method - DTW distance
+```{r}
+# função hclust
+def_hclust_ward_dtw <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 5L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_ward_dtw,
+                      k = 9,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (window size restrictions)- para modificar e visualizar
+```{r}
+# função tsclust # aplicando de 2 a 12 clusters, com window.size = 3
+def_hclust_ward_dtw_restrict_2a12 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.size = 3L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+##### CALCULANDO OS CVIs
+
+# criando nomes para a lista com cada um dos clusters (de 2 a 12) criados com tsclust
+names(def_hclust_ward_dtw_restrict_2a12) <- paste0("k_",2L:12L)
+
+# acessando um dos itens da lista pelo nome
+def_hclust_ward_dtw_restrict_2a12["k_9"]
+
+# aplicando a função 'cvi' em cada um dos itens da lista 
+hclust_ward_dtw_cvis <- sapply(def_hclust_ward_dtw_restrict_2a12, cvi)
+
+hclust_ward_dtw_cvis_internal <-sapply(def_hclust_ward_dtw_restrict_2a12, cvi, type = "internal")
+
+### Escolhendo o número de clusters para plotar
+
+# função hclust
+def_hclust_ward_dtw_restrict <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.size = 3L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+factoextra::fviz_dend(def_hclust_ward_dtw_restrict,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=3)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws2 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 2L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws2,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=3)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws3 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 3L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws3,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+
+
+# PRINCIPAIS HIERARCHICAL CLUSTERS CANDIDATOS:
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=0)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws0 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 0L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws0,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=1)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws1 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 7L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 1L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws1,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+
+### REPETINDO OS PRINCIPAIS CLUSTERS COM K DEFINIDO, PARA CALC. DO CVI
+## Hierarchical clustering - Ward's method - Euclidean distance - k=7
+```{r}
+# função hclust
+def_hclust_ward_eucl_k7 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  k = 7L, # número de grupos
+  distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot
+# brincar com o número de cluster coloridos para ter boa visualização
+# outro jeito de visualizar dendrograma (factoextra pkg)
+factoextra::fviz_dend(def_hclust_ward_eucl_k7,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=0)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws0_k7 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  k = 7L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 0L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws0_k7,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=1)
+```{r}
+# função tsclust 
+
+def_hclust_ward_dtw_sakoe_ws1_k7 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  k = 7L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 1L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_hclust_ward_dtw_sakoe_ws1_k7,
+                      k = 7,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+
+
+# ÍNDICES DO HIERARCHICAL CLUSTERING
+
+## Clustering indices
+
+### Silhouette para ward.D2, dist = euclidean, (hierarchical (?) )
+```{r}
+ ################ package NbClust ######
+    nbclust <- NbClust(
+    data = def_ts_data_t_std,
+    #diss = dist(def_ts_data_t_std, "dtw"),
+    #distance = NULL,
+    distance = "euclidean",
+    min.nc = 2,
+    max.nc = 12,
+    method = "ward.D2",
+    #method = "kmeans",
+    #method = "single",
+    index = "silhouette"
+    # index = 'gap'
+  )
+  
+  # visualização do melhor número de clusters e o seu index (texto)
+  fviz_nbclust(nbclust)
+  
+  nbclust$All.index # índices para todos os números de clusters
+# fazer o plot a partir disso
+  
+  #plot visual dos indexes
+  nbclust_df <- as.data.frame(nbclust$All.index)
+  nbclust_df <- rownames_to_column(nbclust_df, var = "nClusters")
+  nbclust_df$nClusters <- as.numeric(nbclust_df$nClusters)
+  colnames(nbclust_df)[2] <- "Index"
+  
+  ggplot(nbclust_df, aes(x = `nClusters`, y = `Index`)) + 
+    geom_line() +
+    geom_point() +
+    scale_x_continuous(breaks = seq(2,12,1), minor_breaks = NULL) +
+    theme_bw()
+```
+
+### Elbow method para ward.D2, dist = euclidean ('heigth' do próprio cluster)
+```{r}
+
+ggplot(def_hclust_ward_eucl$height %>%
+            as.tibble() %>%
+            add_column(groups = length(def_hclust_ward_eucl$height):1) %>%
+            dplyr::rename(height=value),
+        aes(x=groups, y=height)) +
+     geom_point() +
+     geom_line() +
+   scale_x_continuous(breaks = seq(1,26,1), minor_breaks = NULL)+
+   theme_bw()
+
+```
+
+### Re-visualizando o dendograma com diferentes k's para o hclust euclidiano
+```{r}
+
+factoextra::fviz_dend(def_hclust_ward_eucl,
+                      k = 6,
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+```
+
+
+### Calculation and plotting the CVIs for sakoechiba (window size = 3)
+```{r}
+### gerando de 2 a 12 clusters
+# função tsclust , 2 a 12 clusters
+
+def_hclust_ward_dtw_sakoe_2a12 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 3L,
+  preproc = zscore # pré-processamento utilizando zscores
+)
+
+##### CALCULANDO OS CVIs
+
+# criando nomes para a lista com cada um dos clusters (de 2 a 12) criados com tsclust
+names(def_hclust_ward_dtw_sakoe_2a12) <- 2L:12L
+
+# acessando um dos itens da lista pelo nome
+def_hclust_ward_dtw_sakoe_2a12[9]
+
+# aplicando a função 'cvi' em cada um dos itens da lista 
+hclust_ward_dtw_sakoe_cvis <- as.data.frame(sapply(def_hclust_ward_dtw_sakoe_2a12, cvi))
+
+hclust_ward_dtw_sakoe_cvis_internal <-as.data.frame(sapply(def_hclust_ward_dtw_sakoe_2a12, cvi, type = "internal"))
+
+hclust_ward_dtw_sakoe_cvis_valid <-as.data.frame(sapply(def_hclust_ward_dtw_sakoe_2a12, cvi, type = "valid"))
+
+# transpondo e criando coluna de 'k' para plotar
+hclust_ward_dtw_sakoe_cvis_valid_t <- as.data.frame(t(hclust_ward_dtw_sakoe_cvis_valid))
+hclust_ward_dtw_sakoe_cvis_valid_t$k <- as.numeric(rownames(hclust_ward_dtw_sakoe_cvis_valid_t))
+
+# plot 
+  ggplot(hclust_ward_dtw_sakoe_cvis_valid_t, 
+         aes( x = k,y = Sil)) + 
+    geom_line() +
+    geom_point() +
+    ggtitle("Sil") +
+    xlim(1,13) +
+    lims() +
+    theme_bw()
+  
+  #### Silhouette sugere 4 clusters
+
+  hclust_ward_dtw_sakoe_cvis_valid_t <- hclust_ward_dtw_sakoe_cvis_valid_t %>% 
+    melt(
+      id.vars = "k",
+      na.rm = FALSE, 
+      variable.name = "Index"
+    )
+  
+  
+# plot 
+  ggplot(hclust_ward_dtw_sakoe_cvis_valid_t, 
+         aes( x = k,y = value)) + 
+    geom_line() +
+    geom_point() +
+    ggtitle("hclust_ward_dtw_sakoe_cvis_valid") +
+    xlim(1,13) +
+    scale_x_continuous(breaks = seq(1,13,1)) +
+    facet_wrap( ~ Index, scales = "free_y") +
+    theme_bw()
+  
+  
+```
+
+### APRENDIZADO DE COMO PLOTAR OS ÍNDICES
+### Elbow / Silhouette methods (cluster number tests) - Euclidean and DTW
+#### fviz_nbclust and NbClust
+```{r}
+
+#Método Elbow nos dados padronizados --> o default é distância euclidiana
+# utilizando a tabela transposta, ou seja, cada série é uma linha (estado nas linhas)
+# anos nas colunas, que funcionam como 'variáveis independentes', e os estados são 
+# os grupos que devem ser comparados para cada uma das variáveis
+
+
+  #método 'within cluster sums of squares'
+  fviz_nbclust(def_ts_data_t_std, FUN = hcut, method = "wss")
+
+  #método 'within cluster sums of squares', distância 'dtw'
+  fviz_nbclust(def_ts_data_t_std, 
+               FUN = hcut, 
+               method = "wss",
+               diss = dist(def_ts_data_t_std, "dtw")
+               )
+  
+  #método 'silhouette'
+  fviz_nbclust(def_ts_data_t_std, FUN = hcut, method = "silhouette")
+
+  #método 'silhouette', distância 'dtw'
+  fviz_nbclust(def_ts_data_t_std, 
+               FUN = hcut, 
+               method = "silhouette",
+               diss = dist(def_ts_data_t_std, "dtw")
+               )
+  
+  ##################### testando outros métodos do fviz_nbclust
+  
+    #método 'gap_stat'
+  fviz_nbclust(def_ts_data_t_std, FUN = hcut, method = "gap_stat")
+
+  #método 'silhouette', distância 'dtw'
+  fviz_nbclust(def_ts_data_t_std, 
+               FUN = hcut, 
+               method = "gap_stat",
+               diss = dist(def_ts_data_t_std, "dtw")
+               )
+  
+  ################ package NbClust ######
+  
+  nbclust <- NbClust(
+    data = def_ts_data_t_std,
+    #diss = dist(def_ts_data_t_std, "dtw"),
+    #distance = NULL,
+    distance = "euclidean",
+    min.nc = 2,
+    max.nc = 12,
+    method = "ward.D2",
+    #method = "kmeans",
+    #method = "single",
+    index = "silhouette"
+    # index = 'gap'
+  )
+  
+  # visualização do melhor número de clusters e o seu index (texto)
+  fviz_nbclust(nbclust)
+  
+  
+  nbclust$All.index # índices para todos os números de clusters
+# fazer o plot a partir disso
+  
+  
+  #plot visual dos indexes
+  nbclust_df <- as.data.frame(nbclust$All.index)
+  nbclust_df <- rownames_to_column(nbclust_df, var = "nClusters")
+  nbclust_df$nClusters <- as.numeric(nbclust_df$nClusters)
+  colnames(nbclust_df)[2] <- "Index"
+  
+  ggplot(nbclust_df, aes(x = `nClusters`, y = `Index`)) + 
+    geom_line() +
+    geom_point() +
+    theme_bw()
+  
+  
+  ####### tentando utilizar 'all' para todos os índices de NbClust
+  #### ERRO!!!! não sei porque e não achei na internet
+  #### alguns índices não geram o erro e outros geram... não vale a pena investigar mais
+  
+    nbclust <- NbClust::NbClust(
+    data = def_ts_data_t,
+    #diss = dist(def_ts_data_t_std, "dtw"),
+    #distance = NULL,
+    distance = "euclidean",
+    #min.nc = 2,
+    #max.nc = 5,
+    #method = "ward.D",
+    #method = "ward.D2",
+    method = "kmeans",
+    #method = "single",
+    index = "ccc" # ccc gera erro, 'ch' não gera... e por aí vai
+  )
+  
+```
+
+### REFERENCIA:passo a passo para elbow com hierarquico escolhendo os parâmetros
+```{r}
+
+# creating a dissimilarity matrix
+teste_dist <- dist(def_ts_data_t_std, method = "euclidean")
+
+# creating an object of class "hclust"
+teste_hclust <- hclust(d = teste_dist, method = "ward.D2")
+
+ ggplot(teste_hclust$height %>%
+            as.tibble() %>%
+            add_column(groups = length(teste_hclust$height):1) %>%
+            dplyr::rename(height=value),
+        aes(x=groups, y=height)) +
+     geom_point() +
+     geom_line() +
+   scale_x_continuous(breaks = seq(1,26,1), minor_breaks = NULL)+
+   theme_bw()
+
+```
+
+
+
+
+
+######### K-MEANS ############
+
+
+# PARTITIONAL CLUSTERING - KMEANS
+
+## Calculando e visualizando diferentes distâncias com get_dist (factoextra)
+```{r}
+
+def_dist_eucl <- def_ts_data_t_std %>% get_dist(
+  method = "euclidean")
+
+def_dist_manh <- def_ts_data_t_std %>% get_dist(
+  method = "manhattan") # Igual a distâncias sem raiz e ao quadrado
+
+def_dist_pears <- def_ts_data_t_std %>% get_dist(
+  method = "pearson") # Igual a: (1 - correlação) -> valor baixo, alta cor.
+
+
+fviz_dist(def_dist_eucl,
+          lab_size = 7 ,
+          gradient = list(low = "#00AFBB",
+                          mid = "white",
+                          high = "#FC4E07")
+          )
+
+```
+
+## Índices para kmeans (euclid)- vários k's e plotando o Elbow, Silhouette e Gap
+```{r}
+
+# criando o Elbow com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             method = "wss",
+             k.max = 12)
+
+# criando o Silhouette com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             method = "silhouette",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+# criando o Gap statistics com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             method = "gap",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+```
+
+## Índices para kmeans (manhat)- vários k's e plotando o Elbow, Silhouette e Gap
+```{r}
+
+# criando o Elbow com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             diss = def_dist_manh,
+             method = "wss",
+             k.max = 12)
+
+# criando o Silhouette com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans,  
+             diss = def_dist_manh,
+             method = "silhouette",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+# criando o Gap statistics com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans,  
+             diss = def_dist_manh,
+             method = "gap",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+```
+
+## Índices para kmeans (pears)- vários k's e plotando o Elbow, Silhouette e Gap
+### parece que não é muito correto fazer isso...
+```{r}
+
+# criando o Elbow com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             diss = def_dist_pears,
+             method = "wss",
+             k.max = 12)
+
+# criando o Silhouette com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans,  
+             diss = def_dist_pears,
+             method = "silhouette",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+# criando o Gap statistics com fviz_nbclust
+fviz_nbclust(def_ts_data_t_std, 
+             kmeans,  
+             diss = def_dist_pears,
+             method = "gap",
+             k.max = 12,
+             print.summary = FALSE) # não remove a linha do 'melhor num.'
+
+
+def_kmeans_pears <- fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             diss = def_dist_pears,
+             method = "wss",
+             k.max = 12)
+
+```
+
+
+
+## K-means (euclid) para o número de clusters SILHOUETTE (k=2)
+```{r}
+
+# criando os dados com kmeans para depois plotar:
+def_kmeans_eucl_k2 <- kmeans(def_ts_data_t_std, centers = 2, nstart = 100)
+
+# visualização dos clusters em "Dim1 e Dim2":
+fviz_cluster(def_kmeans_eucl_k2, data = def_ts_data_t_std)
+
+
+```
+
+## K-means (euclid) para o número de clusters GAP (k=3)
+```{r}
+
+# criando os dados com kmeans para depois plotar:
+def_kmeans_eucl_k3 <- kmeans(def_ts_data_t_std, centers = 3, nstart = 100)
+
+# visualização dos clusters em "Dim1 e Dim2":
+fviz_cluster(def_kmeans_eucl_k3, data = def_ts_data_t_std)
+
+
+```
+
+## K-means (euclid) para o número de clusters escolhido (k=7)
+```{r}
+
+# criando os dados com kmeans para depois plotar:
+def_kmeans_eucl_k7 <- kmeans(def_ts_data_t_std, centers = 7, nstart = 100)
+
+# visualização dos clusters em "Dim1 e Dim2":
+fviz_cluster(def_kmeans_eucl_k7, data = def_ts_data_t_std)
+
+sort(def_kmeans_eucl_k7$cluster)
+
+
+```
+
+
+
+# TSCLUST (não é kmeans!)
+## Função tsclust para 'partitional' (quase kmeans???) -  Euclidean Distance
+```{r}
+
+# função tsclust
+def_partit_eucl_mean_k7 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "partitional", # método de clusterização
+  #centroid = "pam", # pam = partition around medoids
+  centroid = "mean",
+  #centroid = "shape", # shape_extraction() << ver help
+  k = 7L, # número de grupos
+  distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  #distance = "sbd",
+  preproc = zscore # pré-processamento usando z-scores
+)
+
+# plot de time-series (linhas) por cluster (facet):
+plot(def_partit_eucl_mean_k7, type = "sc")
+
+# calcula diversos clusters e escolhe 'o melhor' - não testado
+# compare_clusterings()
+
+```
+
+## Função tsclust para 'partitional' (k-shape) -  shape-based Distance
+```{r}
+
+# função tsclust
+def_kshape_sbd_k7 <- tsclust(
+  series = def_ts_data_t, # dados com séries em linhas (pode ser df)
+  type = "partitional", # método de clusterização
+  #centroid = "pam", # pam = partition around medoids
+  #centroid = "mean",
+  centroid = "shape", # shape_extraction() << ver help
+  k = 7L, # número de grupos
+  #distance = "Euclidean", # utiliza distâncias de proxy::dist()
+  distance = "sbd",
+  preproc = zscore # pré-processamento usando z-scores
+)
+
+# plot de time-series (linhas) por cluster (facet):
+plot(def_kshape_sbd_k7, type = "sc")
+
+```
+
+
+## K-means partitions comparison (cascadeKM) - plot com grupos de 2 a 12
+```{r}
+def_kmeans_cascade <- cascadeKM(def_ts_data_t_std, 
+                                inf.gr = 2, 
+                                sup.gr = 12, 
+                                iter = 100, 
+                                criterion = "ssi")
+def_kmeans_cascade$results 
+
+plot(def_kmeans_cascade, sortg = TRUE)
+
+```
+
+
+################## ÍNDICES #############
+
+# COMPARANDO ÍNDICES DOS CLUSTERS, INCLUSIVE HIERÁRQUICOS
+
+## Índices com função cvi() para cálculo de índices - apenas obj. tsclust()
+### IMPORTANTE! BASE DE COMPARAÇÃO PARA ESCOLHER O K-MEANS!
+```{r}
+
+options(scipen = 999)
+
+# lista com os clusters (tsclust) para os quais serão calculados os cvis
+clusters_para_cvi <- list(
+  def_hclust_ward_eucl_k7,
+  def_hclust_ward_dtw_sakoe_ws0_k7,
+  def_hclust_ward_dtw_sakoe_ws1_k7,
+  def_partit_eucl_mean_k7,
+  def_kshape_sbd_k7
+)
+
+#altera os nomes da lista de clusters, para o df já ter nas colunas
+names(clusters_para_cvi) <- c(  
+  "def_hclust_ward_eucl_k7",
+  "def_hclust_ward_dtw_sakoe_ws0_k7",
+  "def_hclust_ward_dtw_sakoe_ws1_k7",
+  "def_partit_eucl_mean_k7",
+  "def_kshape_sbd_k7")
+
+# tem que receber um objeto do tsclust()
+# aplica a função cvi em todos os itens da lista de clusters
+clusters_cvis_compare <- as.data.frame(sapply(clusters_para_cvi, cvi))
+
+# criando o Silhouette com fviz_nbclust
+nbclust_kmeans <- fviz_nbclust(def_ts_data_t_std, 
+             kmeans, 
+             method = "silhouette",
+             k.max = 12) 
+
+nbclust_kmeans$data$y[7]
+# 0.2434
+
+## os valores mais altos de silhouette são 
+
+```
+
+## Tabelas comparativas entre 2 clusters (acho que não funciona bem...):
+### pois os números do cluster de um algoritmo são diferentes do outro
+```{r}
+
+# corta uma das árvores 
+temp_hclust <- cutree(def_hclust_ward_eucl,k = 7)
+temp_hclust <- cutree(def_hclust_ward_dtw_sakoe_ws0,k = 7)
+
+#compara 2 clusters (um hierarquico cortado e outro kmeans)
+table(def_kmeans_eucl_k7$cluster, temp_hclust,
+      dnn = c("kmeans_eucl_k7","hclust")) # nomes das dimensões
+# os números dos clusters são diferentes de um algor. para outro
+# então deve-se procurar por mais de uma ocorrência em uma mesma linha/coluna
+
+
+# entre kmeans e kshape:
+table(def_kmeans_eucl_k7$cluster, def_kshape_sbd_k7@cluster,
+      dnn = c("kmeans_eucl_k7","kshape_sbd_k7"))
+
+```
+
+
+########### JUNTANDO DADOS DOS CLUSTERS COM TABELA DEF #############
+
+# JUNTANDO OS DADOS DOS HIERÁQUICOS E KMEANS EM UMA ÚNICA TABELA
+
+# HIERÁRQUICO - PREPARAÇÃO DE DADOS PARA GRÁFICOS (LINHAS) DAS SÉRIES
+
+### (Adding) Compiling cluster classes in a table
+#### Apenas para hierárquicos - usa 'cutree'
+```{r}
+
+# vetor com o nome do 'cluster' e o respectivo 'número de grupos' que deve ser utilizado
+# se quiser adicionar mais índices e tipos de clusterização, adicionar na lista e rodar
+# esse chunck inteiro novamente (e subsequentes necessários)
+hclust_names <- 
+  expand.grid(
+    c( 
+    "def_hclust_eucl", # average method
+    "def_hclust_ward_dtw",
+    "def_hclust_ward_eucl",
+    "def_hclust_ward_dtw_restrict",
+    "def_hclust_ward_dtw_sakoe_ws0",
+    "def_hclust_ward_dtw_sakoe_ws1",
+    "def_hclust_ward_dtw_sakoe_ws2",
+    "def_hclust_ward_dtw_sakoe_ws3"
+    ),
+    c(4,5,6,7,8,9,10,11,12,13,14), # variação do número de grupos que será computado
+    stringsAsFactors = FALSE
+  )
+
+hclust_names$name <- paste0(hclust_names[,1], "_k", hclust_names[,2])
+
+# inicializa o data.frame com 27 linhas (estados)
+def_hclust_table <- data.frame(matrix(ncol = 0, nrow = 27))
+
+# iteração com todos os elementos de hclust_names, linha a linha
+# monta a tabela com o número do cluster a qual cada estado pertence para cada variação
+# do número de clusters
+
+for (i in 1:nrow(hclust_names)) {
+  def_hclust_table <- def_hclust_table %>% 
+    cbind(
+      as.data.frame(cutree(get(hclust_names[i,1]), k = hclust_names[i,2]))
+      )
+  colnames(def_hclust_table)[i] <- c(hclust_names[i,3])
+}
+
+### não consegui fazer com apply,tapply, etc... provavelmente tem como e é mais bonito.
+
+```
+
+### Modificando nome da coluna da tabela para "Estado"
+```{r}
+## tem que transformar em 'long' - basicamente utilizar a base de dados original mesmo, e depois fazer os filtros necessários novamente
+
+# criar a coluna "Estados" a partir do nome das linhas
+def_hclust_table <- def_hclust_table %>% rownames_to_column(var = "Estado")
+
+## utilizando a base original e fazendo o join
+#def_data_clusters <- def_data %>% inner_join(def_hclust_table,
+#                                                      by = "Estado")
+
+
+```
+
+## Juntando os dados dos clusters k-means e k-shape na tabela de hieraq.
+```{r}
+
+# tabela com os clusters hieráquicos:
+def_hclust_table
+
+# juntando os dados do kmeans com os hieráquicos
+## adicionar outros que precisar juntar
+def_clusters_table <- cbind(
+  def_hclust_table, # tabela compilada com os hieráquicos
+  def_kmeans_eucl_k7 = def_kmeans_eucl_k7$cluster, # objeto kmeans
+  def_kshape_sbd_k7 = def_kshape_sbd_k7@cluster # objeto tsclus, acesso por @
+)
+
+## utilizando a base original e fazendo o join
+# atualiza a tabela criada lá em cima apenas para os  hieráquicos
+def_data_clusters <- def_data %>% inner_join(def_clusters_table,
+                                                      by = "Estado")
+
+
+```
+
+### Creating a standardized column (values of area deforestation)
+### A coluna criada aqui é na tabela criada logo antes - não dá pra subir esse chunk.
+```{r}
+# CRIANDO UMA COLUNA COM DADOS PADRONIZADOS (ZSCORE) 
+## existe alguma outra função mutate... sempre colocar 'dplyr::' na frente!
+def_data_clusters <- def_data_clusters %>% 
+  dplyr::group_by(Estado) %>% 
+  dplyr::mutate(Total_level1_std = scale(Total_level1) %>% as.vector())
+```
+
+## Atualizando vetor com os nomes dos clusters que devem ser plotados
+```{r}
+
+hclust_names
+# Var1, Var2, name: nome do objet, número de cluster, nome com k'x'
+
+# adiciona mais 2 linhas no mesmo formato
+cluster_names <- rbind(
+  hclust_names,
+  c(
+    "def_kmeans_eucl", 7 , "def_kmeans_eucl_k7"),
+  c( "def_kshape_sbd", 7, "def_kshape_sbd_k7"  )
+)
+
+```
+
+
+
+########### GRÁFICOS DAS SÉRIES (LINHAS) POR CLUSTER #############
+
+
+# GRÁFICOS DAS SÉRIES PARA TODOS OS CLUSTERS DA TABELA COMPILADA
+
+### Plots - Visualizing all clusters side by side, standardized data (facet_wrap by cluster)
+```{r}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+# plotando todas as séries de todos os clusters em um mesmo gráfico, com dados padronizados
+
+for (i in 1:nrow(cluster_names)) {
+  
+  last_plot <-
+    def_data_clusters %>% 
+    ggplot(aes_string("Ano", "Total_level1_std", color = "Estado")) +
+    geom_line() +
+    #facet_wrap(~ def_hclust_ward_eucl_k7, scales = "free_y") +
+    facet_wrap(~ get(cluster_names[i,3]), scales = "free_y") +
+    ggtitle(label = cluster_names[i,3]) +
+    theme_bw(base_size = 8)
+    
+  ggsave(
+    filename = paste0(saveFolder,
+                      "/",
+      cluster_names[i,3],
+      "_STD_DATA.jpg"
+    )
+  )
+  
+}
+```
+
+### Plots - Visualizing all clusters side by side, ORIGINAL data (facet_wrap by cluster)
+```{r}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+# plotando todas as séries de todos os clusters em um mesmo gráfico, com dados padronizados
+
+for (i in 1:nrow(cluster_names)) {
+  
+    plot(def_data_clusters %>% 
+    ggplot(aes_string("Ano", "Total_level1", color = "Estado")) +
+    geom_line() +
+    #facet_wrap(~ def_hclust_ward_eucl_k7, scales = "free_y") +
+    facet_wrap(~ get(cluster_names[i,3]), scales = "free_y") +
+    ggtitle(label = cluster_names[i,3]) +
+    theme_bw(base_size = 8))
+    
+  ggsave(
+    filename = paste0(saveFolder,
+                      "/",
+      cluster_names[i,3],
+      "_ORIGINAL_DATA.jpg"
+    )
+  )
+  
+}
+```
+
+### Preparando labels para as séries temporais
+```{r}
+### CRIANDO OBJETO PARA AS LEGENDAS DAS LINHAS
+series_state_labels <- data.frame()
+
+# com estado na primeira posição  
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(e,rep(NA, 32)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+# com estado no meio (posição 17)
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(rep(NA, 16),e,rep(NA, 16)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+class(series_state_labels)
+
+series_state_labels <- as.character(series_state_labels$`c(e, rep(NA, 32))`)
+
+series_state_labels <- as.character(series_state_labels$`c(rep(NA, 16), e, rep(NA, 16))`)
+```
+
+### Preparando labels para as séries temporais - fazendo alternar posição de 1 em 1
+```{r}
+### CRIANDO OBJETO PARA AS LEGENDAS DAS LINHAS
+series_state_labels <- data.frame()
+
+# com estado na primeira posição  
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(e,rep(NA, 32)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+# com estado no meio (posição 17)
+for (e in statesBR$Sigla) {
+  temp <- as.data.frame(c(rep(NA, 16),e,rep(NA, 16)))
+  series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+series_state_labels <- c()
+# com estado na primeira posição  
+for (i in 1:(length(statesBR$Sigla))) {
+  
+  series_state_labels <- c(series_state_labels,
+    rep(NA, i), statesBR$Sigla[i], rep(NA,32 - i)
+  )
+  #temp <- as.data.frame(c(e,rep(NA, 32)))
+  #series_state_labels <- series_state_labels %>% rbind(temp)
+} 
+
+
+class(series_state_labels)
+
+series_state_labels <- as.character(series_state_labels$`c(e, rep(NA, 32))`)
+
+series_state_labels <- as.character(series_state_labels$`c(rep(NA, 16), e, rep(NA, 16))`)
+```
+
+
+
+### Séries temporais dos cluster do hclust Euclidean Ward k=7
+```{r}
+
+
+
+####### PLOT SERIES 
+
+
+#clus.hier.fact <- factor(seq(1,7,1) , levels = c(6,2,5,4,1,7,3))
+#names(clus.hier.fact) <- c(6,2,5,4,1,7,3)
+
+clus.hier.fact.df <- data.frame(def_hclust_ward_eucl_k7 = c(6,2,5,4,1,7,3), 
+                                Clusters = seq(1,7,1))
+
+def_data_clusters_reorder <- def_data_clusters
+
+temp <- left_join(def_data_clusters, clus.hier.fact.df, by = "def_hclust_ward_eucl_k7")[,"Clusters"]
+
+#def_data_clusters_reorder$Clusters <- left_join(def_data_clusters, clus.hier.fact.df, by = "def_hclust_ward_eucl_k7")[,"nova"]
+def_data_clusters_reorder <- cbind(def_data_clusters, temp)
+
+def_data_clusters_reorder$Clusters
+#any(is.na(def_data_clusters_reorder$Clusters))
+
+#def_data_clusters_reorder <- def_data_clusters
+#def_data_clusters_reorder$def_hclust_ward_eucl_k7 <- clus.hier.fact[def_data_clusters$def_hclust_ward_eucl_k7]
+#def_data_clusters_reorder$def_hclust_ward_eucl_k7 <- factor(def_data_clusters_reorder$def_hclust_ward_eucl_k7, levels = #seq(1,7,1))
+
+
+def_data_clusters_reorder %>% 
+    ggplot(aes_string("Ano", "Total_level1_std", color = "Estado")) +
+    geom_line(size = 0.7) +
+    facet_wrap(~ Clusters, scales = "free_y", ncol = 3) + # def_hclust_ward_eucl_k7
+    theme_bw(base_size = 8) +
+  ylab("Área desmatada (padronizada)") +
+  geom_vline(xintercept = c(1987.5, 1991.5, 2005.5)) +
+  theme(legend.position = "top") +
+  ggrepel::geom_label_repel(label = series_state_labels,
+                           #nudge_x = 2,
+                           show.legend = FALSE,
+                           force = 100,
+                           size = 2.5,
+                           segment.color = "black",
+                           label.padding = 0.1) 
+```
+
+### Outras configurações do plot das séries facet por Cluster
+```{r}
+
+def_data_clusters_reorder %>% 
+    ggplot(aes_string("Ano", "Total_level1_std", color = "Estado")) +
+    geom_line() +
+    facet_wrap(~ Clusters, scales = "free_y", ncol = 2) + # def_hclust_ward_eucl_k7
+    theme_bw(base_size = 8) +
+  ylab("Área desmatada (padronizada)") +
+  geom_vline(xintercept = c(1987.5, 1991.5, 2005.5)) +
+  theme(legend.position = "none",
+        strip.text = element_text(face = "bold")) +
+  ggrepel::geom_label_repel(label = series_state_labels,
+                           #nudge_x = 2,
+                           show.legend = FALSE,
+                           force = 100,
+                           size = 2.5,
+                           segment.color = "black",
+                           label.padding = 0.1) 
+```
+
+
+
+
+## EXEMPLOS - Silhouette, table (diferenças entre clusters) e clusplot
+```{r}
+
+
+
+# não funcionou... mas não vale a pena, feio e pouco explicativo
+clusplot(def_ts_data_t_std, def_kmeans_eucl_k7$cluster, 
+         color = TRUE, 
+         shade = TRUE, 
+         labels = 2, 
+         lines = 0)
+
+spe.kmeans <- kmeans(spe.norm, centers = 3, nstart = 100)
+dissE <- daisy(spe.norm) 
+sk <- silhouette(spe.kmeans$cl, dissE) 
+plot(sk)
+
+spebc.ward.g <- cutree(spe.ch.ward,k = 4)
+
+# tabela de frequências entre 2 clusters?
+table(spe.kmeans$cluster, spebc.ward.g)
+
+clusplot(spe.norm, spe.kmeans$cluster, color = TRUE, shade = TRUE, 
+         labels = 2, lines = 0)
+
+# spe.norm são os dados originais!
+```
+
+
+
+
+## Índices NbClust (sem utilidade no momento , mas dá pra calcular vários)
+```{r}
+# não funciona com 'all'
+(NbClust(as.matrix(def_ts_data_t_std), 
+         distance = "euclidean", # euclidean distance
+             min.nc = 2, max.nc = 12, # número de clusters a testar
+             method = "kmeans", # using the k-means method
+             index = "gap")) # escolher o índice - ver o help
+```
+
+
+
+
+## Testes funções para kmeans
+```{r}
+
+# criando os dados com kmeans para depois plotar:
+def_kmeans_eucl <- kmeans(def_ts_data_t_std, centers = 5, nstart = 25)
+
+# visualização dos clusters em "Dim1 e Dim2":
+fviz_cluster(def_kmeans_eucl, data = def_ts_data_t_std)
+
+# pair-wise (não funcionou - x e y não fazem sentido...)
+def_ts_data_t_std %>%
+  as_tibble() %>%
+  mutate(cluster = def_kmeans_eucl$cluster,
+         state = row.names(def_ts_data_t_std)) %>%
+  ggplot(aes(1987, 1988, color = factor(cluster), label = state)) +
+  geom_text()
+
+
+
+
+# não funcionam com objeto tsclust diretamente:
+fviz_nbclust(def_kmeans_eucl)
+
+fviz_cluster(def_kmeans_eucl)
+```
+
+
+
+
+
+
+
+
+####### CLUSTERING DOS ANOS ###########
+
+#### HIERARCHICAL CLUSTERING DOS ANOS!
+## Hierarchical clustering - Ward's method - DTW distance (sakoechiba window size=3)
+```{r}
+# função tsclust 
+
+def_ts_data_std_rowNames <- column_to_rownames(def_ts_data_std, "Ano")
+
+def_anos_hclust_ward_dtw_sakoe_std <- tsclust(
+  series = def_ts_data_std_rowNames, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+  #k = 2L:12L, # número de grupos
+  distance = "dtw", # utiliza distâncias de proxy::dist()
+  window.type = "sakoechiba", 
+  window.size = 3L #,
+  #preproc = zscore # pré-processamento utilizando zscores
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_anos_hclust_ward_dtw_sakoe_std,
+                      k = 4, # 7 e 9 ficam bons também
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
+#### HIERARCHICAL CLUSTERING DOS ANOS
+## Hierarchical clustering - Ward's method - Euclidean distance
+```{r}
+# função tsclust 
+
+def_ts_data_std_rowNames <- column_to_rownames(def_ts_data_std, "Ano")
+
+def_anos_hclust_ward_eucl <- tsclust(
+  series = def_ts_data_std_rowNames, # dados com séries em linhas (pode ser df)
+  type = "hierarchical", # método de clusterização
+  control = hierarchical_control(method = "ward.D2"),  
+  distance = "euclidean"
+)
+
+# plot (mudar k = x para ressaltar quantos clusters quiser)
+factoextra::fviz_dend(def_anos_hclust_ward_eucl,
+                      k = 4, # 7 e 9 ficam bons também
+                      k_colors = "lancet") # paleta de cores (F1 - help)
+
+
+```
+
