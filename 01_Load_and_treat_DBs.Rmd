@@ -1,0 +1,314 @@
+---
+title: "Load_and_treat_DBs"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# TABELA AUXILIAR COM NOMES E SIGLAS DOS ESTADOS
+
+## Importando a tabela com nome dos estados e siglas (criando um factor para manter ordem também)
+```{r}
+# Importa o nome dos estados (ordem alfabética) com as respectivas siglas:
+statesBR <- as.data.frame(data.table::fread(states.db.name <- choose.files(multi = FALSE)),
+                      encoding = "UTF-8")
+summary(statesBR)
+
+
+
+# cria um objeto apenas com as siglas dos estados:
+siglas <- statesBR[,2] # a ordem das siglas é a mesma da alfabética dos nomes!
+summary(siglas)
+
+# cria um factor para manter a ordem alfabética por extenso e não das siglas
+siglas.factor <- factor(siglas, levels = c(
+  'AC',	'AL',	'AP',	'AM',	'BA',	'CE',	'DF',	'ES',	'GO',	'MA',	'MT',	'MS',	'MG',	'PA',	'PB',	'PR',	'PE',	'PI',	'RJ',	'RN',	'RS',	'RO',	'RR',	'SC',	'SP',	'SE',	'TO'))
+
+
+# regiões do Brasil
+regions <- unique(statesBR[,3])
+
+# cria um objeto com o número de registros de siglas (número de estados) 
+## deixado como uma variável para caso seja necessário fazer testes com menos estados
+nStates <- length(siglas) # nrow não serve para data.frame, então mudei para length
+
+```
+
+
+
+
+# VARIÁVEL DEPENDENTE - TARGET - Y
+
+## Importanto o banco de dados da variável resposta (target) - ÁREA DESMATADA
+```{r}
+
+# importação da tabela dos valores da variável target:  
+targ <- as.data.frame(data.table::fread(targ.db.name <- choose.files(multi = FALSE)))
+
+# caminho e nome do arquivo carregado como banco de dados da variável target
+targ.db.name
+
+```
+
+## Criando um banco de dados filtrado da variável target (chamando y.long - com cols y e y_std)
+```{r}
+
+# seleciona as colunas de interesse, renomeando algumas e criando um novo data.frame
+y.long <- targ %>% dplyr::select(
+  key, Estado, Ano, y = Total_level1, y_std = Total_level1_std, Cluster
+)
+
+```
+
+## Criando o objeto 'anos' com quais anos podem ser utilizados segundo os dados y e outro 'anos.total' em relação aos xs
+```{r}
+# vetor com os anos a serem selecionados (o máximo possível segundo os dados y)
+anos <- as.character(seq(1987,2019,1))
+
+anos.total <- seq(1985,2020,1)
+```
+
+## Criando BD de y no mesmo formato para unificar com o de x na função (db.y)
+```{r}
+
+# transforma o BD de y em wide, com anos nas colunas e estados nas linhas (para poder fazer rbind com preditoras)
+db.y <- y.long %>%
+  data.table::dcast(
+  formula =  Estado ~ Ano, #mantém UF (estados) nas linhas, e leva anos pras colunas
+  value.var = "y" # coluna com os valores a serem utilizados
+)
+
+db.y$Serie_sigla <- "y"
+db.y$Serie_sigla_semUF <- "y"
+
+# unique(y.long$Ano)
+
+```
+
+
+
+# VARIÁVEIS INDEPENDENTES - PREDITORAS - Xs
+
+## Importanto o banco de dados das variáveis preditoras (predictors)
+```{r}
+
+# importação da tabela dos valores das variáveis preditoras:  
+pred <- as.data.frame(data.table::fread(pred.db.name <- choose.files(multi = FALSE)),
+                      encoding = "UTF-8")
+
+# caminho e nome do arquivo carregado como banco de dados das variáveis preditoras
+pred.db.name
+
+```
+
+## Conferindo se há valores não numéricos no banco de dados
+```{r}
+
+# conferindo se há valores diferentes de NA ou X nos campos dos estados (na tabela da lista de quais séries são utilizadas)
+check.pred <- as.data.frame(!is.numeric(pred[,as.character(anos.total)]))
+
+apply(pred[,as.character(anos.total)], 2, function (x) is.numeric(x))
+
+```
+
+## Garantindo que as colunas dos anos são numéricas (as.numeric)
+```{r}
+
+#pred.teste <- pred
+
+for (i in anos.total) {
+  
+  pred[as.character(i)] <- as.numeric(unlist(pred[as.character(i)]))
+    
+}
+
+```
+
+## Conferindo novamente se há valores não numéricos no banco de dados
+```{r}
+
+# conferindo se há valores diferentes de NA ou X nos campos dos estados (na tabela da lista de quais séries são utilizadas)
+check.pred <- as.data.frame(!is.numeric(pred[,as.character(anos.total)]))
+
+apply(pred[,as.character(anos.total)], 2, function (x) is.numeric(x))
+
+```
+
+## Criando um banco de dados long das variáveis preditoras (pred.long)
+```{r}
+
+pred.long <- pred %>% 
+  data.table::melt(
+  id.vars = c(names(.)[1:14]), # mantém as colunas categóricas
+  na.rm = FALSE, #mantém valores NA no long
+  variable.name = "Ano" # nome da nova coluna 'melted'
+) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+
+# transformando a coluna ano em numérica
+pred.long$Ano <- as.numeric(as.character(pred.long$Ano))
+
+```
+
+
+
+# TABELA DE CONTROLE DAS SÉRIES DAS VARIÁVEIS INDEPENDENTES - PREDITORAS - Xs
+
+## Importando a tabela com a lista de var. pred. a serem utilizadas
+### Colunas "Regr_01", "Regr_02", etc contém 1s nas séries que devem ser utilizadas
+### Cada estado possui um X para as séries que devem ser utilizadas para ele
+```{r}
+
+# importação da tabela dos valores das variáveis preditoras:  
+list.pred <- as.data.frame(data.table::fread(list.pred.db.name <- choose.files(multi = FALSE)),
+                      encoding = "UTF-8")
+
+# caminho e nome do arquivo carregado como banco de dados das variáveis preditoras
+list.pred.db.name
+
+#glimpse(list.pred)
+
+```
+
+# Criando objeto que contém todos os nomes de séries escolhidas para cada um dos sets de regressão (Ex: Regr_01)
+## regrXX.series
+```{r}
+
+# para teste
+#regrXX <- "Regr_01"
+
+regrXX <- names(list.pred)[startsWith(names(list.pred), "Regr_")]
+
+regrXX.series <- list()
+
+for (r in regrXX) {
+  regrXX.series[[r]] <- remove_rows_na(as.data.frame(unique(list.pred[list.pred[,r] == 1, "Serie_sigla_semUF"])))
+  
+}
+
+regrXX
+
+```
+
+
+# CONFERÊNCIAS - CHECKS
+
+## Conferindo se os nomes das 2 tabelas estão iguais (banco de dados e lista das séries)
+## Refazer o teste toda vez que reimportar as tabelas!
+```{r}
+
+list.pred.unique <- unique(list.pred$Serie_sigla_semUF)
+pred.unique <- unique(pred$Serie_sigla_semUF)
+
+check.series.list <- list.pred.unique %in% pred.unique
+list.pred.unique[!check.series.list] # séries com problemas
+
+check.series.pred <- pred.unique %in% list.pred.unique 
+pred.unique[!check.series.pred]
+
+```
+
+## Conferindo quais séries possuem muitos zeros (para remover das análises)
+```{r}
+
+# Função que funcionou para contar os zeros em cada linha do data.frame!
+
+check.series.zeros <- as.data.frame(pred %>% 
+                                        dplyr::select(names(pred[15:50])) %>% 
+                                        apply(MARGIN =1,
+                                              function(x) length(which(x == 0))))
+names(check.series.zeros) <- "nZeros"
+
+# adiciona a coluna com a contagem de zeros em um novo data.frame e depois filtra apenas as linhas que não são zeradas
+pred.zeros <- cbind(pred, check.series.zeros)
+pred.zeros <- pred.zeros[check.series.zeros != 0,]
+
+# salva o arquivo com as séries que possuem zeros
+pred.zeros %>% data.table::fwrite("Series_com_zeros_para_avaliacao.csv")
+
+## checks periféricos
+# total de zeros nas colunas dos anos do data.frame 'pred' como um todo
+sum(pred %>% dplyr::select(all_of(anos)) == 0 , na.rm = TRUE)
+# 4462 # pós adição das dummies
+
+# total de zeros nas colunas dos anos para as séries estaduais do data.frame 'pred'
+sum(pred %>% dplyr::filter(Granularidade == "E") %>% dplyr::select(all_of(anos)) == 0 , na.rm = TRUE)
+# 4423
+
+```
+
+## Conferindo quais séries possuem muitos NAs (para remover das análises)
+```{r}
+
+# Função que funcionou para contar os zeros em cada linha do data.frame!
+
+check.series.NAs <- as.data.frame(pred %>% 
+                                        dplyr::select(names(pred[15:50])) %>% 
+                                        apply(MARGIN =1,
+                                              function(x) length(which(is.na(x)))))
+names(check.series.NAs) <- "nZeros"
+
+# adiciona a coluna com a contagem de zeros em um novo data.frame e depois filtra apenas as linhas que não são zeradas
+pred.NAs <- cbind(pred, check.series.NAs)
+pred.NAs <- pred.NAs[check.series.NAs != 0,]
+
+# salva o arquivo com as séries que possuem zeros
+pred.NAs %>% data.table::fwrite("Series_com_NAs_para_avaliacao.csv")
+
+
+
+## checks periféricos
+# total de zeros nas colunas dos anos do data.frame 'pred' como um todo
+sum(is.na(pred %>% dplyr::select(all_of(anos))))
+# 609
+
+# total de zeros nas colunas dos anos para as séries estaduais do data.frame 'pred'
+sum(is.na(pred %>% dplyr::filter(Granularidade == "E") %>% dplyr::select(all_of(anos))))
+# 567
+
+
+```
+
+## Conferindo o número de estados para as séries que são estaduais
+```{r}
+
+check.series.e <- pred %>% 
+  dplyr::filter(Granularidade == "E") %>% 
+  dplyr::group_by(Serie_sigla_semUF) %>% 
+  dplyr::summarise(n_estados = n())
+
+# séries com menos de 27 estados:
+# CA_E_PRODUC.Cana-Kton
+# CA_E_PRODUC.Etanol-Km3
+
+temp <- pred %>% dplyr::filter(Serie_sigla_semUF == "CA_E_PRODUC.Cana-Kton") %>% with(unique(Estado_sigla))
+
+siglas[! (siglas  %in%  temp)]
+# Estados que não estão nas séries que tem 24 estados
+# "AP" "DF" "RR"
+
+```
+
+## Conferindo se há valores diferentes de X ou "" (empty string) nas colunas dos estados
+### Está importando como empty string e não NAs onde não tem X
+```{r}
+
+# conferindo se há valores diferentes de NA ou X nos campos dos estados (na tabela da lista de quais séries são utilizadas)
+check.x <- as.data.frame(ifelse(list.pred[siglas] == "X" | list.pred[siglas] == "", "","ERRO"))
+
+#sum(list.pred[siglas] == "X")
+#sum(list.pred[siglas] == "")
+
+#sum(list.pred[siglas] != "X")
+#sum(list.pred[siglas] != "")
+
+# as duas somas devem ser iguais
+sum(list.pred[siglas] != "" | list.pred[siglas] != "X")
+sum(!is.na(list.pred[siglas]))
+```
+
+
+
