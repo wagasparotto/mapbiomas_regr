@@ -1,0 +1,416 @@
+---
+title: "03A_Individual_regressions"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## OBJETIVO: GERAR REGRESSÕES INDIVIDUAIS (Y ~ X) PARA TODAS AS SÉRIES DO BANCO DE DADOS E AVALIAR O P-VALUE (TESTE T)
+### PODER DESCARTAR AS VARIÁVEIS QUE NÃO FOREM SIGNIFICANTES PARA TODOS OS ESTADOS
+
+# PROBLEMÁTICA:
+## PARA CADA UMA DAS SÉRIES:
+### SE FOR "N" OU "G", GERAR A REGRESSÃO PARA TODOS OS ESTADOS (Y)
+### SE FOR "E", GERAR A REGRESSÃO PARA O ESTADO EQUIVALENTE
+
+# PROBLEMAS COM OS DADOS:
+## MISSING VALUES
+## ANO DE INÍCIO E FIM DIFERENTES
+
+# PEGAR O ANO DE INÍCIO E FIM DE CADA SÉRIE E VERIFICAR SE HÁ MISSING VALUES NESSE RANGE
+
+# COMO ARMAZENAR OS RESULTADOS?
+## PARA AS SÉRIES "N" E "G", UMA COLUNA PARA CADA ESTADO, CONTENDO O P-VALUE
+## PARA AS SÉRIES "E", UMA COLUNA COM O P-VALUE PARA O ESTADO
+### TAMANHOS DIFERENTES! COMO FAZER?
+### CRIAR COLUNA PARA TODOS OS ESTADOS, E PREENCHER AS QUE DEVEM SER PREENCHIDAS
+#### UTILIZAR X PARA P-VALUE ABAIXO DE 0.05 E NA QUANDO NÃO DEVE SER PREENCHIDO
+
+# UTILIZAR A TABELA DO BANCO DE DADOS QUE CONTÉM CADA SÉRIE EM UMA LINHA E AS COLUNAS DOS ANOS COM OS DADOS 
+## ACRESCENTAR AS COLUNAS DOS ESTADOS
+
+# DIVIDIR EM CASOS "N"/"G"  E "E":
+
+# CRIANDO O DATA.FRAME QUE VAI RECEBER OS DADOS (ind.regr)
+```{r}
+
+#glimpse(pred)
+
+# criando uma matriz com o nome dos estados em 27 colunas
+col.states <- matrix(nrow = nrow(pred), ncol = 27, dimnames = list(NULL,siglas))
+
+# cria os nomes dos estados com "_r2" no fim
+siglas.r2 <- paste0(siglas,"_r2")
+
+# cria uma matriz com 27 colunas e os nomes r2
+col.states.r2 <- matrix(nrow = nrow(pred), ncol = 27, dimnames = list(NULL,siglas.r2))
+
+# juntando as colunas dos estados no banco de dados de séries preditoras
+ind.regr <- cbind(pred, col.states, col.states.r2)
+
+```
+
+
+# REGRESSÕES PARA AS SÉRIES "N" e "G"
+## data frame para apenas essas séries (filtro) - ind.regr.ng
+```{r}
+
+
+# filtrando as séries que são N ou G
+ind.regr.ng <- ind.regr %>% dplyr::filter(Granularidade == "N" | Granularidade == "G")
+# 203 séries
+
+
+# fazendo o procedimento para cada uma das linhas de séries N e G
+for (s in 1:nrow(ind.regr.ng)) {
+  
+
+
+  # criando variáveis auxiliares dos anos de início e fim da série em questão, considerando que deve ser >1987 e <2019
+  anoi <- ifelse(ind.regr.ng[s,"Ano_ini"] < 1987, 1987, ind.regr.ng[s,"Ano_ini"])
+  anof <- ifelse(ind.regr.ng[s,"Ano_fim"] > 2019, 2019, ind.regr.ng[s,"Ano_fim"])
+  
+  
+  # extraindo os dados para a regressão com base nos anos de início e fim
+  regr.data <- data.frame(x = as.numeric(ind.regr.ng[s,as.character(seq(anoi,anof,1))]))
+  
+  # testando se há missing values nos dados X para prosseguir - se não, já pula direto para colocar anotação sobre missing
+  if(!any(is.na(regr.data$x))){
+  
+    for (e in siglas) {
+      
+      # juntando os dados de y e x para o primeiro estado
+      #glimpse(targ)
+      #glimpse(db.y)
+      e.r2 <- paste0(e,"_r2")
+    
+      regr.data$y <- as.numeric(db.y[db.y$Estado == e,as.character(seq(anoi,anof,1))])
+      
+      ng.model <- lm(formula = y ~ x, data = regr.data)
+      ng.summary <- summary(ng.model)
+      #ng.coef <- ng.summary$coefficients
+      
+      
+      ind.regr.ng[s,e] <- ng.summary$coefficients["x","Pr(>|t|)"]
+      ind.regr.ng[s,e.r2] <- ng.summary$r.squared
+    
+    } # fim do FOR dos estados
+    
+  } # fim do IF
+  
+  else { # aplica o "Miss" para todos os estados dessa série
+    ind.regr.ng[s,siglas] <- "Miss"
+    ind.regr.ng[s,siglas.r2] <- "Miss"
+  }
+} # fim do FOR das séries N e G
+
+ind.regr.ng %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_nac_e_glob_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+# REGRESSÕES PARA AS SÉRIES "E"
+```{r}
+
+
+# filtrando as séries que são N ou G
+ind.regr.e <- ind.regr %>% dplyr::filter(Granularidade == "E")
+
+
+# para testes
+s <- 1
+
+# fazendo o procedimento para cada uma das linhas de séries N e G
+for (s in 1:nrow(ind.regr.e)) {
+  
+  # série referente à qual estado?
+  e <- ind.regr.e[s,"Estado_sigla"]
+  e.r2 <- paste0(e,"_r2")
+  
+  # criando variáveis auxiliares dos anos de início e fim da série em questão, considerando que deve ser >1987 e <2019
+  anoi <- ifelse(ind.regr.e[s,"Ano_ini"] < 1987, 1987, ind.regr.e[s,"Ano_ini"])
+  anof <- ifelse(ind.regr.e[s,"Ano_fim"] > 2019, 2019, ind.regr.e[s,"Ano_fim"])
+  
+  
+  # extraindo os dados para a regressão com base nos anos de início e fim
+  regr.data <- data.frame(x = as.numeric(ind.regr.e[s,as.character(seq(anoi,anof,1))]))
+  
+  # testando se há missing values nos dados X para prosseguir - se não, já pula direto para colocar anotação sobre missing
+  if(!any(is.na(regr.data$x))){
+    
+    if(!all(regr.data$x == 0)){
+  
+      # juntando os dados de y e x para o primeiro estado
+      #glimpse(targ)
+      #glimpse(db.y)
+      
+      regr.data$y <- as.numeric(db.y[db.y$Estado == e,as.character(seq(anoi,anof,1))])
+      
+      e.model <- lm(formula = y ~ x, data = regr.data)
+      e.summary <- summary(e.model)
+      #ng.coef <- ng.summary$coefficients
+      
+      print(paste(s,e))
+      ind.regr.e[s,e] <- e.summary$coefficients["x","Pr(>|t|)"]
+      ind.regr.e[s,e.r2] <- e.summary$r.squared
+    
+    } # fim do IF de tudo igual a zero
+    else{
+      ind.regr.e[s,e] <- "Zeros"
+      ind.regr.e[s,e] <- "Zeros"
+    }
+    
+  } # fim do IF de algum missing value
+  
+  else { # aplica o "Miss" APENAS PARA O ESTADO DA SÉRIES E DEIXA NA PARA O RESTANTE
+    ind.regr.e[s,e] <- "Miss"
+    ind.regr.e[s,e] <- "Miss"
+  }
+} # fim do FOR das séries E
+
+#ind.regr.e[226,]
+
+```
+
+# Juntando as duas tabelas e salvando
+```{r}
+
+ind.regr.total <- rbind(ind.regr.ng, ind.regr.e)
+
+ind.regr.total %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+
+# Modificando a tabela de regressões por estado para criar um arquivo limpo separado
+# REGRESSÕES PARA AS SÉRIES "E"
+```{r}
+
+
+# filtrando as séries que são N ou G
+regr.e <- pred %>% dplyr::filter(Granularidade == "E")
+# 723 séries
+
+regr.e$pvalue <- NA
+regr.e$r2 <- NA
+
+# para testes
+#s <- 1
+
+# fazendo o procedimento para cada uma das linhas de séries N e G
+for (s in 1:nrow(regr.e)) {
+  
+  # série referente à qual estado?
+  e <- regr.e[s,"Estado_sigla"]
+  e.r2 <- paste0(e,"_r2")
+  
+  # criando variáveis auxiliares dos anos de início e fim da série em questão, considerando que deve ser >1987 e <2019
+  anoi <- ifelse(regr.e[s,"Ano_ini"] < 1987, 1987, regr.e[s,"Ano_ini"])
+  anof <- ifelse(regr.e[s,"Ano_fim"] > 2019, 2019, regr.e[s,"Ano_fim"])
+  
+  
+  # extraindo os dados para a regressão com base nos anos de início e fim
+  regr.data <- data.frame(x = as.numeric(regr.e[s,as.character(seq(anoi,anof,1))]))
+  
+  # testando se há missing values nos dados X para prosseguir - se não, já pula direto para colocar anotação sobre missing
+  if(!any(is.na(regr.data$x))){
+    
+    if(!all(regr.data$x == 0)){
+  
+      # juntando os dados de y e x para o primeiro estado
+      #glimpse(targ)
+      #glimpse(db.y)
+      
+      regr.data$y <- as.numeric(db.y[db.y$Estado == e,as.character(seq(anoi,anof,1))])
+      
+      e.model <- lm(formula = y ~ x, data = regr.data)
+      e.summary <- summary(e.model)
+      #ng.coef <- ng.summary$coefficients
+      
+      print(paste(s,e))
+      regr.e[s,"pvalue"] <- e.summary$coefficients["x","Pr(>|t|)"]
+      regr.e[s,"r2"] <- e.summary$r.squared
+    
+    } # fim do IF de tudo igual a zero
+    else{
+      regr.e[s,"pvalue"] <- "Zeros"
+      regr.e[s,"r2"] <- "Zeros"
+    }
+    
+  } # fim do IF de algum missing value
+  
+  else { # aplica o "Miss" APENAS PARA O ESTADO DA SÉRIES E DEIXA NA PARA O RESTANTE
+    regr.e[s,"pvalue"] <- "Miss"
+    regr.e[s,"r2"] <- "Miss"
+  }
+} # fim do FOR das séries E
+
+#ind.regr.e[226,]
+
+regr.e %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_estaduais_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+
+## Filtrando os dados com base nos valores dos coeficientes (pvalues)
+### Dados nacionais e globais
+```{r}
+
+# para as séries nacionais e globais:
+# apenas as linhas que contém pelo menos 1 pvalue > 0.05 devem continuar
+
+ind.regr.ng.notsig <- ind.regr.ng %>% dplyr::filter(
+  if_all(.cols = all_of(siglas), .fns = function(x) x > 0.05)
+)
+
+ind.regr.ng.notsig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_nac_glob_NAOsignificantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+
+
+
+ind.regr.ng.sig <- ind.regr.ng %>% dplyr::filter(
+  if_any(.cols = all_of(siglas), .fns = function(x) x <= 0.05)
+)
+
+ind.regr.ng.sig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_nac_glob_significantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+### Dados estaduais
+```{r}
+
+# para as séries nacionais e globais:
+# apenas as linhas que contém pelo menos 1 pvalue > 0.05 devem continuar
+
+ind.regr.e.notsig <- ind.regr.e %>% dplyr::filter(
+  if_any(.cols = all_of(siglas), .fns = function(x) x > 0.05)
+)
+
+ind.regr.e.notsig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_estaduais_NAOsignificantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+
+
+
+ind.regr.e.sig <- ind.regr.e %>% dplyr::filter(
+  if_any(.cols = all_of(siglas), .fns = function(x) x <= 0.05)
+)
+
+ind.regr.e.sig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_estaduai_significantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+### Dados estaduais - sem colunas dos estados
+```{r}
+
+# para as séries nacionais e globais:
+# apenas as linhas que contém pelo menos 1 pvalue > 0.05 devem continuar
+
+regr.e.notsig <- regr.e %>% dplyr::filter(
+  pvalue > 0.05
+)
+
+regr.e.notsig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_estaduais_NAOsignificantes_pvalue_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+
+
+
+regr.e.sig <- regr.e %>% dplyr::filter(
+  pvalue <= 0.05
+)
+
+regr.e.sig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_estaduai_significantes_pvalue_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+```
+
+
+
+####     !!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!!    #########
+### Fazer um "join" com a tabela de referência - para poder filtrar diretamente nas "Regr_XX"
+```{r}
+
+# juntando as séries significantes
+ind.regr.sig <- rbind(ind.regr.ng.sig, ind.regr.e.sig)
+
+ind.regr.sig %>% utils::write.csv(file = paste0("DB_Var_pred_Regressoes_individuais_significantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+
+# lista das séries significantes
+series.sig <- unique(ind.regr.sig$Serie_sigla_semUF)
+
+
+```
+
+## Selecionar apenas as colunas que devem ser incorporadas na tabela-lista
+## N e G - renomeando também 
+```{r}
+
+glimpse(ind.regr.ng.sig)
+
+regr.ng.join <- ind.regr.ng.sig %>% dplyr::select(
+  Serie_sigla_semUF, all_of(siglas), all_of(siglas.r2)
+)
+
+glimpse(regr.ng.join)
+
+names(regr.ng.join) <- c("Serie_sigla_semUF",
+                         paste0("pvalue_",siglas),
+                         paste0("r2_",siglas))
+
+glimpse(regr.ng.join)
+
+```
+
+### dcast/pivot_wider das séries estaduais
+```{r}
+
+glimpse(regr.e.sig)
+#Estado_sigla
+#pvalue
+#r2
+#Serie_sigla_semUF
+
+regr.e.join <- regr.e.sig %>%
+pivot_wider(id_cols = Serie_sigla_semUF,
+            names_from = Estado_sigla,
+            values_from = c(pvalue, r2))
+
+# precisa renomear as colunas para coincidir? talvez não... 
+
+glimpse(regr.e.join)
+
+```
+
+## Inner join:
+```{r}
+
+glimpse(list.pred)
+
+names(regr.ng.join)[!(names(regr.ng.join) %in% names(regr.e.join))]
+regr.e.join$pvalue_RS <- NA
+regr.e.join$r2_RS <- NA
+
+ind.regr.join <- rbind(regr.ng.join,regr.e.join)
+
+
+
+list.pred.join <- left_join(list.pred, ind.regr.join, by = "Serie_sigla_semUF")
+
+list.pred.join %>% utils::write.csv(file = paste0("Lista_Var_pred_e_siglas_com_pvalues_e_r2_significantes_", Sys.Date(), ".csv"), 
+                                    fileEncoding = "latin1")
+
+
+```
+
