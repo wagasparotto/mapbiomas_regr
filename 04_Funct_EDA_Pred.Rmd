@@ -1,0 +1,450 @@
+---
+title: "06_EDA_Preditoras"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Análise exploratória das variáveis preditoras
+
+
+
+# RODAR TODOS ESSES CHUNKS SE HOUVER ATUALIZAÇÃO NO BANCO DE DADOS DOS PREDITORES
+
+# Transpondo o banco de dados 'pred' para estatísticas básicas (séries nas colunas, anos nas linhas)
+```{r}
+
+pred.t <- pred %>% 
+  dplyr::select(Serie_sigla, anos) %>% 
+  data.table::transpose(keep.names = "Ano",
+                        make.names = "Serie_sigla"
+                          )
+
+pred.t <- pred.t %>% column_to_rownames(var = "Ano")
+
+```
+
+# Estatísticas básicas dos dados preditores (criação e arrumando a tabela)
+```{r}
+pred.t.summ <- pred.t %>%
+  dplyr::summarise(across(
+    #names(.)[5:13], # apenas colunas de interesse
+    everything(),
+    list( 
+      COUNT = ~sum(!is.na(.x)), #<<<<<<<###<<<<< PARA NÃO CONTAR NA'S!!!!!
+      MIN = ~min(.x, na.rm = TRUE),
+      MAX = ~max(.x, na.rm = TRUE),
+      MEAN = ~mean(.x, na.rm = TRUE),
+      SD = ~sd(.x, na.rm = TRUE),
+      CV = ~ raster::cv(.x, na.rm = TRUE)/100, # coef. de variação do pkg raster (retorna pc)
+      Q1 = ~quantile(.x, na.rm = TRUE, probs = 0.25), #default é o tipo 7 de cálculo
+      MEDIAN = ~median(.x, na.rm = TRUE),
+      Q3 = ~quantile(.x, na.rm = TRUE, probs = 0.75)
+          ),
+    .names = "{.fn}_{.col}"
+  ))
+
+# arrumando a tabela pra ficar legível
+# transpondo a tabela
+pred.summ <- data.table::transpose(pred.t.summ,
+                       keep.names = "Stat_var"
+                       )
+
+# criando uma coluna com o nome da estatística
+pred.summ$stat <- str_split(
+  string = pred.summ$Stat_var, # strings
+  pattern =  "_", # caracter que dividirá o string
+  n = 2,  # divide em 2 pedaços apenas
+  simplify = TRUE # para retornar uma matriz
+            )[,1] # selecionando apenas a primeira coluna da matriz
+
+# criando uma coluna com o nome da variável
+pred.summ$Serie_sigla <- str_split(
+  string = pred.summ$Stat_var,
+  pattern =  "_",
+  n =2, # divide em 2 pedaços
+  simplify = TRUE
+)[,2]
+
+# arrumando o nome da coluna de valores (V1 --> Value):
+colnames(pred.summ)[2] <- "Value"
+
+# salva uma cópia no formato long (antes do dcast)
+pred.summ.long <- pred.summ
+
+# montando uma tabela com cada estatística nas colunas e variáveis nas linhas
+pred.summ <-pred.summ %>% 
+  dplyr::select(Serie_sigla, stat, Value) %>% #selecionando colunas
+  data.table::dcast(
+  formula = Serie_sigla ~ stat, # coluna 'var' com a variáveis e 'stat' com as estatis
+  value.var = "Value" # coluna com os valores a serem utilizados
+)
+
+pred.summ <- pred.summ %>% dplyr::select(
+  Serie_sigla, COUNT, MEAN, SD, CV, MIN, Q1, MEDIAN, Q3, MAX
+)
+
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+pred.summ %>% data.table::fwrite(paste0(saveFolder,
+                  "/Statistics_summary_predit_vars_",
+                  Sys.Date(),
+                  ".csv"
+))
+```
+
+
+# Padronizando os dados PREDITORES para obter as estatísticas básicas
+```{r}
+
+pred.t.std <- as.data.frame(base::scale(pred.t))
+
+```
+
+# Estatísticas básicas dos dados preditores PADRONIZADOS
+```{r}
+pred.t.std.summ <- pred.t.std %>%
+  dplyr::summarise(across(
+    #names(.)[5:13], # apenas colunas de interesse
+    everything(),
+    list( 
+      COUNT = ~sum(!is.na(.x)), #<<<<<<<###<<<<< PARA NÃO CONTAR NA'S!!!!!
+      MIN = ~min(.x, na.rm = TRUE),
+      MAX = ~max(.x, na.rm = TRUE),
+      MEAN = ~mean(.x, na.rm = TRUE),
+      SD = ~sd(.x, na.rm = TRUE),
+      CV = ~ raster::cv(.x, na.rm = TRUE)/100, # coef. de variação do pkg raster (retorna pc)
+      Q1 = ~quantile(.x, na.rm = TRUE, probs = 0.25), #default é o tipo 7 de cálculo
+      MEDIAN = ~median(.x, na.rm = TRUE),
+      Q3 = ~quantile(.x, na.rm = TRUE, probs = 0.75)
+          ),
+    .names = "{.fn}std_{.col}"
+  ))
+
+# arrumando a tabela pra ficar legível
+# transpondo a tabela
+pred.std.summ <- data.table::transpose(pred.t.std.summ,
+                       keep.names = "Stat_var"
+                       )
+
+# criando uma coluna com o nome da estatística
+pred.std.summ$stat <- str_split(
+  string = pred.std.summ$Stat_var, # strings
+  pattern =  "_", # caracter que dividirá o string
+  n = 2,  # divide em 2 pedaços apenas
+  simplify = TRUE # para retornar uma matriz
+            )[,1] # selecionando apenas a primeira coluna da matriz
+
+# criando uma coluna com o nome da variável
+pred.std.summ$Serie_sigla <- str_split(
+  string = pred.std.summ$Stat_var,
+  pattern =  "_",
+  n =2, # divide em 2 pedaços
+  simplify = TRUE
+)[,2]
+
+# arrumando o nome da coluna de valores (V1 --> Value):
+colnames(pred.std.summ)[2] <- "Value"
+
+# salva uma cópia no formato long (antes do dcast)
+pred.std.summ.long <- pred.std.summ
+
+# montando uma tabela com cada estatística nas colunas e variáveis nas linhas
+pred.std.summ <-pred.std.summ %>% 
+  dplyr::select(Serie_sigla, stat, Value) %>% #selecionando colunas
+  data.table::dcast(
+  formula = Serie_sigla ~ stat, # coluna 'var' com a variáveis e 'stat' com as estatis
+  value.var = "Value" # coluna com os valores a serem utilizados
+)
+
+pred.std.summ <- pred.std.summ %>% dplyr::select(
+  Serie_sigla, COUNTstd, MEANstd, SDstd, CVstd, MINstd, Q1std, MEDIANstd, Q3std, MAXstd
+)
+
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+pred.std.summ %>% data.table::fwrite(paste0(saveFolder,
+                  "/Statistics_summary_predit_vars_STANDARDIZED_",
+                  Sys.Date(),
+                  ".csv"
+))
+```
+
+# Juntar estatísticas (normais e padronizadas) com a tabela de sets de regressão ou db original (mas com o # do set também)
+# RODAR ESSE CHUNK NOVAMENTE SE HOUVE ATUALIZAÇÃO NOS SETS DE REGRESSÃO!
+```{r}
+# juntando as duas tabelas de estatísticas
+pred.summ.total <- cbind(pred.summ,pred.std.summ[,-1])
+
+# criando uma coluna sem o nome dos estados "Serie_sigla_semUF"
+temp <- as.data.frame(str_split(
+string = pred.summ.total$Serie_sigla, # strings
+pattern =  "_", # caracter que dividirá o string
+n = 4,  # divide em 2 pedaços apenas
+simplify = TRUE # para retornar uma matriz
+          )[,1:3] )
+
+temp <- paste0(temp$V1,"_",temp$V2,"_",temp$V3)
+
+pred.summ.total$Serie_sigla_semUF <- temp
+
+
+# juntando com os dados de set de regressão 
+pred.summ.total <- inner_join(pred.summ.total, list.pred, by = "Serie_sigla_semUF")
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+pred.summ.total %>% data.table::fwrite(paste0(saveFolder,
+                  "/Statistics_summary_predit_vars_TOTAL_COM_SETS_",
+                  Sys.Date(),
+                  ".csv"
+))
+
+```
+
+
+
+
+## OUTROS EDAs - APENAS PARA UM SET DE REGRESSÃO - TRANSFORMAR EM FUNÇÕES PARA FAZER PARA TODAS SE NECESSÁRIO
+
+
+# FUNÇÃO calcCorr(db) - Calcular correlações 
+# DADOS PADRONIZADOS!
+```{r}
+# utilizar os dados no formato wide (variáveis nas colunas, anos nas linhas)
+# apenas os dados numéricos, sem uma coluna de ano, adequado para o caso
+# com pacote Hmisc - cria apenas a tabela primeiro, input para o plot
+calcCorr <- function(db){
+  db %>% as.matrix() %>% Hmisc::rcorr(type = "pearson")
+}
+
+
+```
+
+# FUNÇÃO - corrMatrix(corr.db) - Matriz de correlação (mandar o objeto resultante do cálculo de correlação
+# DADOS PADRONIZADOS!
+```{r}
+
+# matriz usada nos resultados preliminares
+# em cima um tipo e embaixo outro
+
+corrMatrix <- function(corr.db){
+  corrplot::corrplot.mixed(corr.db$r, 
+           upper = 'square',
+           lower = 'number',
+           lower.col = 'black',
+           bg = 'grey80',
+           diag = NULL,
+           tl.pos = 'lt',
+           tl.col = 'black',
+           tl.cex = 0.8,
+           number.cex = 0.4,
+           number.digits = 2
+           #p.mat = comp_corr_data$P, # há NAs nos p-values! deixar DIAG = FALSE para não dar erro
+           #sig.level = 0.05, 
+           #insig = "blank"
+           )
+}
+
+```
+
+## FUNÇÃO - corrMatrixDend(corr.db) - Plot da matriz de correlações com dendograma (heatmaply_cor)
+# DADOS PADRONIZADOS!
+```{r}
+
+#pacote heatmaply
+
+corrMatrixDend <- function(corr.db){
+  heatmaply::heatmaply_cor(
+    corr.db$r,
+    #node_type = "scatter",
+    #limits = c(-1, 1), # para forçar os limites de -1 a 1
+    #point_size_mat = (abs(def_corr_std_data$r)), # dá pra excluir a diagonal por aqui
+    plot_method = "plotly", # plotly --> fica melhor
+    #grid_gap = 1, #???
+    #colors = viridis(n=256, alpha = 1, begin = 0, end = 1, option = "viridis"),
+    
+    hclustfun = hclust,  # default é hclust / tsclust usa dados transpostos
+    distfun = proxy::dist,
+    
+    hclust_method = "ward.D2", # /single / complete / average / centroid
+    dist_method = "euclidean", # euclidean, maximum, manhattan, canberra, binary, minkowski
+    
+    #hclustfun_col = "euclidean",
+    #hclustfun_row = "ward.D2",
+    #distfun_row = "euclidean",
+    #distfun_col
+    
+   # k_row = 7, # número de cores na matriz de correlação
+    #k_col = 9,
+    
+    #draw_cellnote = TRUE, # coloca os coeficientes sobre os pontos
+    #cellnote = def_corr_std_data$r, # valores a plotar - poderia retirar metade 
+    #cellnote_size = 0.01,
+    
+    #file = "def_corr_plot_com_hclust.png", # se utilizar .html salva arquivo interativo!
+    #width = 1200,
+    #height = 900,
+    
+    #xlab = c("9 clusters"), # colunas
+    #ylab = c("7 clusters"), # linhas
+    
+    grid_size = 0.2 #,
+    
+  )
+}
+
+```
+
+
+# FUNÇÃO - corrLines(db)
+# DADOS PADRONIZADOS!
+# "Linhas" de correlação -visualização das correlações por espessura e cor
+## Não dá pra ver nada nem com poucas variáveis (14 da Regr_01) - não vai servir para nada se tiver > 4 ou 5
+```{r}
+
+#A função correlation do pacote correlation faz com que seja estruturado um
+#diagrama interessante que mostra a inter-relação entre as variáveis e a
+#magnitude das correlações entre elas
+#Requer instalação e carregamento dos pacotes see e ggraph para a plotagem
+corrLines <- function(db){
+db %>%
+  correlation::correlation(method = "pearson") %>%
+  plot()
+}
+
+```
+
+# FUNÇÃO - corrTable(db)
+# DADOS PADRONIZADOS!
+# Tabela com as correlações 2 a 2 - bem boa
+```{r}
+
+#A função correlation do pacote correlation faz com que seja estruturado um
+#diagrama interessante que mostra a inter-relação entre as variáveis e a
+#magnitude das correlações entre elas
+#Requer instalação e carregamento dos pacotes see e ggraph para a plotagem
+corrTable <- function(db){
+  db %>% correlation::correlation(method = "pearson")
+}
+
+```
+
+
+# FUNÇÃO - hieraqPred(db) - Transposição e Agrupamento hierárquico das variáveis preditoras
+# DADOS PADRONIZADOS!
+```{r}
+# formato de entrada: Variáveis nas linhas, anos nas colunas
+
+
+hierarqPred <- function(db){
+  library(dtwclust)
+  
+  db.t <- db %>% dplyr::mutate("Ano" = row.names(db)) %>% 
+    data.table::transpose(keep.names = "Serie_sigla_semUF",
+                          make.names = "Ano")
+  
+  db.t <- column_to_rownames(db.t, var = "Serie_sigla_semUF")
+  
+  
+  # função hclust
+  temp.hclust <- tsclust(
+    
+    ##### removendo o y (primeira linha) #### <<<<<<<<<<<<<
+    series = db.t[-1,], # dados com séries em linhas (pode ser df)
+    
+    type = "hierarchical", # método de clusterização
+    control = hierarchical_control(method = "ward.D2"), # modifica parâmetros de controle do hierárquico
+    #k = 7L, # número de grupos
+    distance = "Euclidean"#, # utiliza distâncias de proxy::dist()
+    #preproc = zscore # pré-processamento utilizando zscores
+  )
+  
+  
+  # plot
+  # brincar com o número de cluster coloridos para ter boa visualização
+  # outro jeito de visualizar dendrograma (factoextra pkg)
+  #factoextra::fviz_dend(temp.hclust,
+  #                      k = 2,
+  #                      horiz = TRUE,
+  #                      cex = 0.3,
+  #                      #type = "circular", #rectangle",
+  #                      k_colors = "lancet") # paleta de cores (F1 - help)
+  
+  return(temp.hclust)
+
+}
+
+```
+
+
+# FUNÇÃO - histVars(db) - Histograma das variáveis (target e preditoras, para um set)
+```{r}
+
+histVars <- function(db){
+
+  # criando um data frame long para poder usar no ggplot
+  db.long <- db %>%
+    data.table::melt(
+    na.rm = FALSE, #mantém valores NA no long
+    variable.name = "Serie_sigla_semUF" # nome da nova coluna 'melted'
+  ) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+  
+  
+  db.long %>% ggplot() +
+    geom_histogram(
+      aes(x = value),
+      bins = 10
+    ) +
+    facet_wrap( ~ Serie_sigla_semUF,
+                scales = "free") +
+    theme_bw(base_size = 7)
+}
+
+
+```
+
+# FUNÇÃO - splomVars(db) - scatter plot matrix das variáveis, incluindo y
+```{r}
+# para testes
+#regrname <- "Regr_XX"
+
+splomVars <- function(db, regrname){
+  library(GGally)
+  
+  options(scipen = 99999)
+  #options(repr.plot.width=15, repr.plot.height=15)
+  plot <- GGally::ggpairs(db,
+                  progress = FALSE,
+                  upper = list(continuous = wrap("cor", size = 1)),
+                  lower = list(continuous = wrap("points", size = 0.05))) + 
+    theme_bw(base_size = 1.5) +
+    theme(axis.text.x = element_text(angle = 90)) +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+    scale_x_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE))
+  
+    ggsave(plot = plot, filename = paste0(regrname,"_SPLOM_",Sys.Date(),".png"), 
+                                        units = "px", 
+                                        width=2000, 
+                                        height=2000, 
+                                        dpi=400, 
+                                        limitsize = FALSE, 
+                                        device = "png")
+    
+    return(plot)
+}
+
+```
+
