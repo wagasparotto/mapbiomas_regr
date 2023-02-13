@@ -1,0 +1,1059 @@
+---
+title: "Regressao"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+######### CÓDIGO FUNCIONAL PARA BAIXO - IMPLEMENTAÇÃO DE FATO ###########
+
+## FUNÇÃO create.db.regr(regr, dbX = get(pred), dbY = get(db.y), ano.i=1987, ano.f=2019, std = FALSE) 
+### para filtrar os dados da Regr_XX e retornar o banco de dados pronto para utilizar na regressão
+### ARGUMENTO regr deve ser uma string com o nome do set de regressão (Ex: "Regr_01")
+### ARGUMENTO std é booleano - TRUE para padronizar os dados; DEFAULT = FALSE
+```{r}
+
+# com base no nome da regressão ("Regr_XX"), filtra os dados preditores e unifica com o y, para retornar o bd pronto para a regressão. 
+# Utiliza a lista de séries escolhidas que está na tabela list.pred para compor o BD
+# Utiliza os nomes da coluna 'Serie_sigla_semUF'
+
+# argumento regr deve ser um caracter com o nome da regressão igual ao da tabela list.pred (Ex: Regr_01)
+
+# teste do argumento regr
+#regr <- "Regr_01"
+
+create.db.regr <- function(regr, dbX = "pred", dbY = "db.y", ano.i = 1987, ano.f = 2019, tx = FALSE, std = FALSE){
+  
+  #browser()
+  if(dbX == "pred"){
+    dbX <- get(dbX)
+  }
+  
+  if(dbY == "db.y"){
+    dbY <- get(dbY)
+  }
+  
+
+  # filtrando apenas as séries de 'regr'
+  db.pred <- list.pred %>% dplyr::filter(
+    get(regr) == 1 # não lembro mais que objeto 'regr' é esse! perigoso!
+  )
+  
+  # número de linhas do banco de dados filtrado para a 'regr'
+  nrow(db.pred)
+  
+  # vetor com os nomes das séries utilizadas na 'regr'
+  list.pred.regr <- unique(db.pred$Serie_sigla_semUF)
+  length(list.pred.regr) # número de séries na lista
+  
+  # vetor com os anos a serem selecionados (o máximo possível segundo os dados y)
+  #anos <- as.character(seq(1987,2019,1)) 
+  
+  # filtra apenas as linhas que estão marcadas na coluna de 'regr' e em seguida filtra as colunas de interesse (Série e anos)
+  
+  
+   # qual o maior ano de início dentre essas séries? (que não extrapolem 1987 e 2019: valores default nos argumentos)
+  # é possível determinar os anos mínimos e máximos pelos argumentos, mas sempre obedecendo os valores do db.pred também
+  
+  ano.ini <- ifelse(max(db.pred$Ano_ini) < ano.i, ano.i, max(db.pred$Ano_ini))
+  
+  ano.fim <- ifelse(min(db.pred$Ano_fim) > ano.f, ano.f, min(db.pred$Ano_fim))
+  
+  print(paste(" #### ANO DE INÍCIO = ", ano.ini))
+  print(paste(" #### ANO DE FIM = ", ano.fim))
+  
+  # vetor com os anos que serão utilizados na Regr_01
+  anos.regr <- as.character(seq(ano.ini,ano.fim,1))
+  length(anos.regr)
+  
+  db.x <- dbX %>% 
+    dplyr::filter(
+    Serie_sigla_semUF %in% list.pred.regr # verificar nome da col 'Serie_sigla'
+    ) %>% 
+    dplyr::select(
+      Serie_sigla, Serie_sigla_semUF, all_of(anos.regr)
+    )
+  
+  # check do número de séries em db.x
+  length(unique(db.x$Serie_sigla_semUF))
+  
+  
+  # cria um banco de dados com as mesmas séries de 'regr', mas com as colunas por estado com os 'X' de quais devem ser usadas
+  regr.state <- list.pred %>% 
+    dplyr::filter(
+    Serie_sigla_semUF %in% list.pred.regr # verificar nome da col 'Serie_sigla'
+    ) %>% 
+    dplyr::select(
+      Granularidade, Serie_sigla_semUF, all_of(siglas)
+    )
+  
+  nrow(regr.state)
+  
+
+  
+  # cria uma coluna para os estados com base na couna Serie_sigla
+  db.x$Estado <- str_split(
+    string = db.x$Serie_sigla, # strings
+    pattern =  "_", # caracter que dividirá o string
+    n = 4,  # divide em 2 pedaços apenas
+    simplify = TRUE # para retornar uma matriz
+              )[,4] # selecionando apenas a primeira coluna da matriz
+  
+  
+      # seleciona apenas os anos do vetor de anos.regr no bd de y
+  dbY <- dbY %>% dplyr::select(
+    Serie_sigla_semUF, Serie_sigla, Estado, all_of(anos.regr)
+  )
+  
+  
+  # junta as duas tabelas - adiciona as linhas de uma em outra, contando que as colunas possuem o mesmo nome
+  db.regr <- rbind(dbY, db.x)
+  
+
+  #### CONFERINDO BANCO DE DADOS FILTRADO
+  # conferindo número de registros para cada estado
+  #table(db.regr$Estado)
+  # deve somar o número de séries de 'regr' + 1 (y)
+  
+  # conferindo número de séries filtradas
+  #unique(db.regr$Serie_sigla_semUF)
+  
+  #conferindo quais não foram selecionadas
+  #check.series <-  list.pred.regr %in% unique(db.regr$Serie_sigla_semUF)
+  #list.pred.regr[!check.series] # deve ser vazio!
+ 
+  # cria um vetor com todas as séries incluindo "y" para a regressão 'regr':
+  list.regr <- c("y", list.pred.regr)
+  
+
+  
+  ### criar um objeto list que contém o banco de dados para cada estado em cada um dos níveis
+  ## para os dados nacionais o campo Estado é "" (empty string)
+  # para cada estado, verificar se na tabela list.pred existe um "X" marcado ou não: se sim, utilizar no estado, se não, remover
+  
+  
+  # cria o objeto que vai receber todos os data.frames em forma de lista
+  db.regr.list <- as.list(siglas)
+  names(db.regr.list) <- siglas
+  #db.regr.list <- NA
+  
+  # para testes do for
+  #e <- "MT" # apenas para testes
+  
+  db.regr.list <- list()
+  
+  for (e in siglas) {
+    
+    # check dos valores da coluna do estado (deve haver apenas "" e X)
+    (unique(regr.state[e]))
+    print(e)
+    
+    # criar vetor temporário do estado para ver quais séries devem ser selecionadas
+    # o primeiro valor será sempre TRUE pois corresponde a série y
+    state.series <- rbind(c(TRUE),regr.state[e] == "X")
+    
+    # vetor com os nomes das séries que devem ser selecionadas para o estado em questão:
+    list.state <- list.regr[state.series]
+    
+    #unique(db.regr$Estado) # não há valores 'NA' e sim 'empty string' = ""
+    #db.temp <- db.regr %>% dplyr::filter(Estado == "")
+    
+    #e = "MT"
+    
+    db.temp.e <- as.data.frame(db.regr %>%  # UTILIZAR 2 COLCHETES!!!! ACESSAR O NÍVEL INTERNO
+      dplyr::filter(
+        Serie_sigla_semUF %in%  list.state & (Estado == e | Estado == "")))
+    
+    
+    # seleciona apenas as colunas numéricas que serão transpostas
+    db.temp.e <- db.temp.e %>% dplyr::select(
+      Serie_sigla_semUF, all_of(anos.regr)
+      )
+
+  # transpõe a matriz para que os anos fiquem nas linhas e as séries na colunas, pois a função de regressão trabalha assim
+  db.temp.e <- as.data.frame(data.table::transpose(db.temp.e,
+                                                  make.names = "Serie_sigla_semUF", # coluna antes da transposição que contém os   nomes que serão transformados nos nomes das colunas
+                                                  keep.names = "Ano") # nome da primeira coluna que será criada, com os nomes das   colunas antes da transposição
+                            )
+
+  # transforma a coluna "Ano" em nome das linhas
+  db.temp.e <- db.temp.e %>% column_to_rownames(var = "Ano")
+  
+  ### PADRONIZA OS DADOS (POR COLUNA - FUNÇÃO BASE::SCALE) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  if(std){ # realiza a padronização dos dados se o argumento std for TRUE
+    db.temp.e <- as.data.frame(db.temp.e %>% base::scale())
+  }
+  
+  # adiciona o data.frame na lista com o nome do estado da vez
+  db.regr.list[[e]] <- db.temp.e
+
+ 
+    }   #### FIM DA FOR QUE CRIA A LISTA DE BANCO DE DADOS POR ESTADO
+  
+
+# Visualizando o item 1 da lista
+# teste1 <- db.regr.list[1] # retorna um list com um data frame dentro
+# teste2 <- db.regr.list[[1]] # retorna o data.frame como data.frame (acessa o nível interno)
+
+
+  return(db.regr.list) # retorna a lista com os data.frames para cada estado (nomeada)
+}   #### FIM DA FUNÇÃO DE RETORNA O DB PARA REGRESSÕES
+
+
+
+```
+
+
+############################################
+########## FUNÇÕES DE CRIAR OS MODELOS #####
+############################################
+
+# FUNÇÃO lm.model(regr) - PASSAR O BANCO DE DADOS (list) A SER UTILIZADO! (COM TODOS OS ESTADOS)
+## Rodando um modelo lm para todos os estados e retornando o modelo completo
+```{r}
+
+# para testes
+#regr <- "db.regr01"
+
+lm.model <- function(db){
+
+  # browser()
+  
+  # inicializa a lista que receberá os modelos
+  regr.models <- list()
+  regr.models.step <- list()
+  #regr.signif.series <- list()
+  
+  # para testes
+  #e <- "AC"
+  
+  for (e in siglas) {
+    
+    print(e)
+    
+    db.regr <- db
+    
+    regr.models[[e]] <- lm( formula = y ~ . , # variável y versus todas as outras
+                  data = db.regr[[e]])
+    
+    
+  } # FIM DO FOR
+
+  return(regr.models)
+  
+} # FIM DA FUNÇÃO
+
+```
+
+
+# FUNÇÃO stepwise.model(db) - PASSAR O BANCO DE DADOS (list) A SER UTILIZADO! (COM TODOS OS ESTADOS)
+## Rodando um modelo lm para todos os estados, com stepwise e retornando o modelo stepwise completo
+```{r}
+
+# para testes
+#regr <- "db.regr01"
+
+stepwise.model <- function(db){
+
+  # browser()
+  
+  # inicializa a lista que receberá os modelos
+  regr.models <- list()
+  regr.models.step <- list()
+  #regr.signif.series <- list()
+  
+  # para testes
+  #e <- "AC"
+  
+  for (e in siglas) {
+    
+    #print(e)
+    
+    db.regr <- db
+    
+    regr.models[[e]] <- lm( formula = y ~ . , # variável y versus todas as outras
+                  data = db.regr[[e]])
+    
+    # função stepwise para remover colinearidade (?) e achar as melhores variáveis
+    regr.models.step[[e]] <- stats::step(regr.models[[e]], k = 3.841459, trace = 0) # verificar o porquê do k (signif. = ?)
+    
+    #imprime o sumário para o estado em questão
+    #summary(regr.models.step)
+    
+    #regr.signif.series[[e]] <- names(regr.models.step[[e]]$coefficients)
+    
+  } # FIM DO FOR
+
+  return(regr.models.step)
+  
+} # FIM DA FUNÇÃO
+
+```
+
+
+
+## FUNÇÃO table.series(regr, model):tabula os dados por estado com todas as séries, 'marcando' as signif. com os coeficientes
+### "N.A." introduzido para as séries que não foram nem utilizadas
+### Mantém o X para as não significantes (removidas pelo stepwise)
+#### ARGUMENTOS regr = string com nome do set de regressão (Ex: "Regr_01") e model = modelo stepwise
+```{r}
+
+table.series <- function(regr, model){
+
+  # argumento recebido com o nome da regressão que se quer produzir a tabela com os coeficientes
+  #regr <- "Regr_01"
+  
+  
+  # transformando no nome do objeto que contém o modelo stepwise
+  #regr.step.name <- paste0("regr",
+  #                         str_split(string = regr,
+  #                            pattern = "_",
+  #                            n = 2,
+  #                            simplify = TRUE
+  #                            )[2],
+  #                         ".step.models")
+  
+  # filtrando apenas as séries de 'regr' (coluna Serie_sigla_semUF) e os estados
+  regr.series <- list.pred %>% dplyr::filter(
+    get(regr) == 1) %>% 
+    dplyr::select(Serie_sigla_semUF, all_of(siglas))
+  
+  
+  # para testes
+  #i <- 1
+  
+  # pega o nome do objeto que contém as regressões XX e entrega a lista com todos os modelos stepwise
+  regr.step.models <- model
+  
+  # para todas as linhas das séries utilizadas na regressão pedida 
+  for (i in 1:length(regr.series$Serie_sigla_semUF)) {
+    
+    # para todos os estados
+    for (e in siglas) {
+    
+      # séries significantes para o estado em questão (igual ao que consta no modelo stepwise) - mantém as aspas
+      signif.series.aspas <- names(regr.step.models[[e]]$coefficients)
+      
+      #removendo aspas do nome da série significante
+      signif.series <- str_replace_all(string = signif.series.aspas,
+                                   pattern = "`",
+                                   replacement = "")
+      
+       # série da linha em questão (dentro do for)
+      line.serie <- regr.series[i,"Serie_sigla_semUF"]
+      
+      # nome da série com aspas para poder procurar no vetor de coeficientes adiante
+      serie.eq.aspas <- signif.series.aspas[signif.series %in% line.serie]
+      
+      # testa se o valor na coluna do estado para a série da linha em questão é 'empty string', se sim, adiciona N.A.
+      print(paste(i,e))
+      if(regr.series[i,e] == "") {
+        regr.series[i,e] <- "N.A."
+        #print(paste(i,"N.A"))
+      }
+      
+      # testa se o valor na coluna do estado para a série da linha em questão está entre as significantes desse estado
+      # se sim, adiciona o valor do coeficiente equivalente
+      if(regr.series[i,"Serie_sigla_semUF"] %in% signif.series) {
+        regr.series[i,e] <- regr.step.models[[e]]$coefficients[serie.eq.aspas] # necessário utilizar as aspas no nome
+        #print(paste(i, "Signif.")) # print que entrou nesse if
+      }
+      
+    } # fim do FOR dos estados
+  } # fim do FOR das linhas (número de séries dessa regressão)
+  
+  
+  # cria um vetor com 27 espaços com NA
+  intercepts <- data.frame(matrix(ncol = 28))
+  names(intercepts) <- c("Serie_sigla_semUF", siglas)
+  intercepts$Serie_sigla_semUF <- "Intercept"
+  
+  # para cada estado pega o valor do Intercept do modelo stepwise
+  for (e in siglas) {
+    # captura os valores dos interceptos para cada estado (sobrescrito)
+      intercepts[e] <- regr.step.models[[e]]$coefficients["(Intercept)"]
+  } # fim do FOR dos Intercepts
+  
+  #print(intercepts)
+  
+  #adicionando a linha dos intercepts na tabela total
+  regr.series <- rbind(regr.series,intercepts)
+
+return(regr.series)
+} # FIM DA FUNÇÃO table.series
+
+
+```
+
+
+#####################################
+########## FUNÇÕES DOS PLOTS #####
+#####################################
+
+
+## FUNÇÃO create.db.plot(model) : Montando base de dados para plot do y x y-fitted
+### Argumento model = modelo stepwise
+```{r}
+
+# coluna com o nome do estado
+# coluna com os valores y
+# coluna com os valores yhat
+# acrescentar linhas no data frame
+
+# para teste
+#regr <- "Regr_01"
+
+create.db.plot <- function(model) {
+  
+  #browser()
+
+  # nome do objeto que contém os modelos de regressão a partir do argumento 'regr'
+  #regr.step.name <- paste0("regr",
+  #                           str_split(string = regr,
+  #                              pattern = "_",
+  #                              n = 2,
+  #                              simplify = TRUE
+  #                              )[2],
+  #                           ".step.models")
+  
+  # pega o nome do objeto que contém as regressões XX e entrega a lista com todos os modelos stepwise
+  regr.step.models <- model
+  
+  # para teste
+  #e <- "AC"
+  
+  # inicializa o objeto que armazenará todo o banco de dados  
+  db.plot <- data.frame()
+  
+  for (e in siglas) {
+    
+    db.temp <- data.frame(
+      x = as.numeric(names(regr.step.models[[e]]$fitted.values)),
+      y = regr.step.models[[e]]$model$y,
+      yhat = regr.step.models[[e]]$fitted.values, # valores finais
+      Estado = e
+    )
+  
+  db.plot <- rbind(db.plot, db.temp)
+  
+  } # fim do FOR dos estados
+  return(db.plot)
+} # fim da FUNÇÃO create.db.plot
+
+```
+
+
+## FUNÇÃO create.db.plot.ypred(db.regr) : Montando base de dados para plot do y x preditoras
+### Argumento db.regr = data base igual ao que foi utilizado para fazer a regressão
+```{r}
+
+# para teste
+#db.regrXX$Regr_01$AC
+
+create.db.plot.ypred <- function(db.regr) {
+
+  #browser()
+  # para teste
+  #e <- "AC"
+  
+  # inicializa o objeto que armazenará todo o banco de dados  
+  db.plot <- data.frame()
+  
+  for (e in siglas) {
+    
+    # acrescenta uma coluna com os anos
+    db.regr[[e]] <- db.regr[[e]] %>% rownames_to_column(var = "Ano")
+    db.regr[[e]]$Ano <- as.numeric(db.regr[[e]]$Ano)
+    
+    db.temp <- db.regr[[e]] %>% 
+      data.table::melt(
+        id.vars = c("Ano"),
+        na.rm = FALSE, #mantém valores NA no long
+        variable.name = "Serie_sigla_semUF", # nome da nova coluna 'melted'
+        verbose = FALSE
+        ) %>% 
+      dplyr::mutate(Estado = e)
+  
+  db.plot <- rbind(db.plot, db.temp)
+  
+  } # fim do FOR dos estados
+  return(db.plot)
+} # fim da FUNÇÃO create.db.plot
+
+```
+
+
+
+## FUNÇÃO plot.yyhat(regr, db.plot) :Plot de y x yhat com facet_wrap para todos os estados (para o objeto db.plot)
+```{r}
+
+plot.yyhat <- function(regr, db.plot){
+  db.plot %>% ggplot() +
+    geom_line(aes(x = x, 
+                  y = y),
+              color = "coral",
+              size = 0.8) +
+    geom_line(aes(x = x, 
+                  y = yhat),
+              color = "cornflowerblue",
+              size = 0.8) +
+      facet_wrap(~ Estado, 
+                 scales = "free_y",
+                 ncol = 4,
+                 nrow = 7) +
+      theme_bw(base_size = 7) +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0)) +
+    ggtitle(regr)
+  
+    #ylab("Total de área (ha) desmatada ") +
+
+}
+
+```
+
+
+## FUNÇÃO plot.ypred(regr, db.plot.ypred) :Plot de y vs. preditoras, para EDA, com facet_wrap para todos os estados 
+```{r}
+
+plot.ypred <- function(regr, db.plot.ypred, ncol = NA, nrow = NA){
+  db.plot.ypred %>% ggplot() +
+    geom_line(aes(x = Ano, 
+                  y = value,
+                  color = Serie_sigla_semUF),
+              size = 0.8) +
+      facet_wrap(~ Estado, 
+                 scales = "free_y",
+                 ncol = ncol,
+                 nrow = nrow) +
+      theme_bw(base_size = 7) +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0)) +
+    ggtitle(regr)
+  
+    #ylab("Total de área (ha) desmatada ") +
+
+}
+
+```
+
+
+#####################################
+########## FUNÇÕES DOS SUMÁRIOS #####
+#####################################
+
+### FUNÇÕES COM O SUMÁRIO DOS MODELOS
+
+## FUNÇÃO table.summ(model)
+## Calcula os sumários dos modelos para todos os estados
+## Receber o objeto list com todos os modelos para um determinado set de 'regr'
+```{r}
+
+# para testes
+#model <- regrXX.step.models$Regr_01
+
+table.summ <- function(model){
+
+  summ <- list()
+  
+  for (e in siglas) {
+    summ[[e]] <- summary(model[[e]])
+  }
+  
+  return(summ)
+}
+
+```
+
+## FUNÇÃO table.coef(summ)
+## Cria um data.frame para cada estado (dentro de um list) com base nos sumários, para extrair R^2 e p-values
+## Recebe o sumário dos modelos
+```{r}
+
+table.coef <- function(summ){
+  
+  coef.df <- list()
+  
+  for (e in siglas) {
+
+        coef.df[[e]] <- as.data.frame(summ[[e]]$coefficients)
+        
+  }
+  
+  return(coef.df)
+}
+
+```
+
+
+## FUNÇÃO table.model(regr) : tabula os dados dos modelos por estado, colocando o p-value das que permaneceram
+### "N.A." introduzido para as séries que não foram nem utilizadas
+### Mantém o X para as que não possuem valor de p-value
+#### ARGUMENTOS regr = string com nome do set de regressão (Ex: "Regr_01") e model = modelo stepwise / lm
+#### ARGUMENTOS 'summ' é resultado da função 'table.summ' e 'coef' da 'table.coef' --> sumários e coeficientes
+```{r}
+
+table.model <- function(regr, model, summ, coef, savefolder = getwd()){
+
+  #browser()
+  
+  # argumento recebido com o nome da regressão que se quer produzir a tabela com os coeficientes
+  #regr <- "Regr_01"
+  
+  
+  # transformando no nome do objeto que contém o modelo stepwise
+  #regr.step.name <- paste0("regr",
+  #                         str_split(string = regr,
+  #                            pattern = "_",
+  #                            n = 2,
+  #                            simplify = TRUE
+  #                            )[2],
+  #                         ".step.models")
+  
+  # filtrando apenas as séries de 'regr' (coluna Serie_sigla_semUF) e os estados
+  regr.series <- list.pred %>% dplyr::filter(
+    get(regr) == 1) %>% 
+    dplyr::select(Serie_sigla_semUF, all_of(siglas))
+  
+  
+  # para testes
+  #i <- 1
+  
+  # modelo
+  regr.step.models <- model
+  
+  # para todas as linhas das séries utilizadas na regressão pedida 
+  for (i in 1:length(regr.series$Serie_sigla_semUF)) {
+    
+    # para todos os estados
+    for (e in siglas) {
+    
+      # séries significantes para o estado em questão (igual ao que consta no modelo stepwise) - mantém as aspas
+      # se for um modelo lm sem stepwise, conterá todas
+      signif.series.aspas <- names(regr.step.models[[e]]$coefficients)
+      
+      #removendo aspas do nome da série significante
+      signif.series <- str_replace_all(string = signif.series.aspas,
+                                   pattern = "`",
+                                   replacement = "")
+      
+       # série da linha em questão (dentro do for)
+      line.serie <- regr.series[i,"Serie_sigla_semUF"]
+      
+      # nome da série com aspas para poder procurar no vetor de coeficientes adiante
+      serie.eq.aspas <- signif.series.aspas[signif.series %in% line.serie]
+      
+      
+      # testa se o valor na coluna do estado para a série da linha em questão é 'empty string', se sim, adiciona N.A.
+      #print(paste(i,e))
+      if(regr.series[i,e] == "") {
+        regr.series[i,e] <- "N.A."
+        #print(paste(i,"N.A"))
+      } # fim do IF
+      
+      
+      
+      # testa se o valor na coluna do estado para a série da linha em questão está entre as significantes desse estado
+      # se sim, adiciona o valor do do P-VALUE
+      if(regr.series[i,"Serie_sigla_semUF"] %in% signif.series) {
+        #regr.series[i,e] <- regr.step.models[[e]]$coefficients[serie.eq.aspas] # necessário utilizar as aspas no nome
+        regr.series[i,e] <- coef[[e]][serie.eq.aspas,"Pr(>|t|)"]
+          
+        #print(paste(i, "Signif.")) # print que entrou nesse if
+      } # fim do IF
+      
+      
+    } # fim do FOR dos estados
+  } # fim do FOR das linhas (número de séries dessa regressão)
+  
+  
+  # cria um vetor com 27 espaços com NA para receber os valores dos R^2
+  r2 <- data.frame(matrix(ncol = 28))
+  names(r2) <- c("Serie_sigla_semUF", siglas)
+  r2$Serie_sigla_semUF <- "R-squared"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores dos R^2 ajustado
+  r2.adj <- data.frame(matrix(ncol = 28))
+  names(r2.adj) <- c("Serie_sigla_semUF", siglas)
+  r2.adj$Serie_sigla_semUF <- "Adjusted R-squared"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores da estatística F
+  f.stat <- data.frame(matrix(ncol = 28))
+  names(f.stat) <- c("Serie_sigla_semUF", siglas)
+  f.stat$Serie_sigla_semUF <- "F-stat"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores dos p-values da estatística F
+  f.stat.pValue <- data.frame(matrix(ncol = 28))
+  names(f.stat.pValue) <- c("Serie_sigla_semUF", siglas)
+  f.stat.pValue$Serie_sigla_semUF <- "F-stat: p-value"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores do teste Shapiro-Wilk
+  sw.test <- data.frame(matrix(ncol = 28))
+  names(sw.test) <- c("Serie_sigla_semUF", siglas)
+  sw.test$Serie_sigla_semUF <- "Shapiro-Wilk p-value"
+  
+    # cria um vetor com 27 espaços com NA para receber os valores do teste de Breusch-Pagan
+  bp.test <- data.frame(matrix(ncol = 28))
+  names(bp.test) <- c("Serie_sigla_semUF", siglas)
+  bp.test$Serie_sigla_semUF <- "Breusch-Pagan p-value"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores do teste RESET de Ramsey para as variáveis independentes
+  reset.x.test <- data.frame(matrix(ncol = 28))
+  names(reset.x.test) <- c("Serie_sigla_semUF", siglas)
+  reset.x.test$Serie_sigla_semUF <- "RESET test X: p-value"
+  
+    # cria um vetor com 27 espaços com NA para receber os valores do teste RESET de Ramsey para a variável Y
+  reset.y.test <- data.frame(matrix(ncol = 28))
+  names(reset.y.test) <- c("Serie_sigla_semUF", siglas)
+  reset.y.test$Serie_sigla_semUF <- "RESET test Y: p-value "
+  
+  # cria um vetor com 27 espaços com NA para receber os valores dos anos de início das séries
+  anoi <- data.frame(matrix(ncol = 28))
+  names(anoi) <- c("Serie_sigla_semUF", siglas)
+  anoi$Serie_sigla_semUF <- "Ano inicio:"
+  
+  # cria um vetor com 27 espaços com NA para receber os valores dos anos de fim das séries
+  anof <- data.frame(matrix(ncol = 28))
+  names(anof) <- c("Serie_sigla_semUF", siglas)
+  anof$Serie_sigla_semUF <- "Ano fim:"
+  
+  # cria um vetor com 27 espaços com NA para receber o número de séries (que ficaram após stepwise)
+  nseries <- data.frame(matrix(ncol = 28))
+  names(nseries) <- c("Serie_sigla_semUF", siglas)
+  nseries$Serie_sigla_semUF <- "Num series:"
+  
+  # para cada estado pega o valor do R^2, do F-test, etc...
+  for (e in siglas) {
+    
+    print(paste(regr,e))
+    # captura os valores dos R^2 e ajustado
+    
+      r2[e] <- summ[[e]]$r.squared
+      r2.adj[e] <- summ[[e]]$adj.r.squared
+      
+      # testes de Shapiro e Breusch (p-values)
+      sw.test[e] <- stats::shapiro.test(regr.step.models[[e]]$residuals)$p.value #p-value do teste de Shapiro-Wilk: n <= 30
+      bp.test[e] <- ols_test_breusch_pagan(regr.step.models[[e]])$p # Breusch-Pagan test - p-value
+      
+      # Ramsey tests - com as variáveis independentes (regressor) e com o y (fitted)
+      reset.x.test[e] <- lmtest::resettest(regr.step.models[[e]], power = 2:3, type = "regressor")$p.value
+      reset.y.test[e] <- lmtest::resettest(regr.step.models[[e]], power = 2:3, type = "fitted")$p.value
+      
+      # Anos de início e fim
+      anoi[e] <- min(as.numeric(names(regr.step.models[[e]]$fitted.values)))
+      anof[e] <- max(as.numeric(names(regr.step.models[[e]]$fitted.values)))
+
+      # Número de séries significantes (no caso de modelos stepwise)
+      nseries[e] <- (length(regr.step.models[[e]]$coefficients) - 1) # número de coeficientes do modelo menos o intercepto (alfa)
+      
+      #print(paste(summ[[e]]$fstatistic[1],  summ[[e]]$fstatistic[2], summ[[e]]$fstatistic[3]))
+      
+      if(!summ[[e]]$r.squared == 0 ){ # captura estatística F se o R^2 não for zero
+        
+        f.stat[e] <- summ[[e]]$fstatistic[1]
+        f.stat.pValue[e] <- stats::pf(summ[[e]]$fstatistic[1],  
+                                      summ[[e]]$fstatistic[2], 
+                                      summ[[e]]$fstatistic[3], 
+                                      lower.tail = FALSE)
+      } # fim do IF
+      else {
+        
+        # estatística F e pValue se R^2 for zero (ou seja, apenas o intercepto no modelo)
+        f.stat[e] <- "Intercept"
+        f.stat.pValue[e] <- "Intercept"
+      } # fim do ELSE
+      
+  } # fim do FOR dos parâmetros
+  
+  #print(intercepts)
+  
+  
+  
+  #adicionando os parâmetros na tabela total
+  regr.series <- rbind(regr.series,
+                       r2, r2.adj, 
+                       f.stat, f.stat.pValue, 
+                       sw.test, bp.test, 
+                       reset.x.test, reset.y.test, 
+                       anoi, anof, 
+                       nseries)
+  
+  
+  obj.name <- deparse(substitute(model))
+  #print(obj.name)
+  
+  regr.series %>% data.table::fwrite(
+    paste0(savefolder, "/",regr, "_", obj.name, "_", Sys.Date(),".csv")
+  )
+
+return(regr.series)
+} # FIM DA FUNÇÃO table.series
+
+
+```
+
+
+## FUNÇÃO table.r2a.nSeries()
+### Tabula todos os R2 ajustados e o número de séries 
+```{r}
+
+# para testes
+#regr.table <- regrXX.step.table
+
+# FUNÇÃO
+# ARGUMENTO regr.table é o objeto list com TODOS OS SETS de regressão, resultante da função "table.model"
+table.r2a.nSeries <- function(regr.table, savefolder = getwd(), sufix = ""){
+  
+  sets <- names(regr.table) # vetor com os nomes dos sets de regressão que serão compilados
+  
+  table <- data.frame(matrix(
+    ncol = (2*27 +1),
+    dimnames = list(NULL,
+                    c(
+                      "Regr_set",
+                      paste0(siglas,"_r2a"),
+                      paste0(siglas,"_nSeries")
+                    ))
+    ))
+  
+  #s<- 1
+  for (s in 1:length(sets)) {
+    
+    r2a.line <- regr.table[[sets[s]]] %>% 
+      dplyr::filter(Serie_sigla_semUF == "Adjusted R-squared") %>% 
+      dplyr::select(all_of(siglas))
+    
+    nSeries.line <- regr.table[[sets[s]]] %>% 
+      dplyr::filter(Serie_sigla_semUF == "Num series:") %>% 
+      dplyr::select(all_of(siglas))
+    
+    table[s,] <- c(sets[s], r2a.line, nSeries.line)
+    
+  } # fim do FOR dos sets de regressão
+  
+  table %>% data.table::fwrite(file = paste0(savefolder,
+    "/Regr_sets_r2ajustado_e_nSeries_",sufix,"_",Sys.Date(),".csv"
+  ))
+  
+  return(table)
+} # fim da FUNÇÃO
+
+
+
+#glimpse(regrXX.step.table$Regr_01)
+#regrXX.step.table$Regr_01[,1] 
+#"Adjusted R-squared"
+#"Num series:"
+#
+#regrXX.step.table$Regr_01$
+#
+#names(regrXX.step.table$Regr_01)
+#
+## Criar uma tabela com todos os sets de regressão com os valores de R^2 ajustado e o número de séries, para cada um dos estados
+### Linhas = set de regressão
+### Colunas = estados
+#### Com R^2 ajustado (ESTADOr2a)
+#### Com número de séries (ESTADOn)
+#
+#names(regrXX.step.table)
+
+
+```
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+############ FUNÇÃO CREATE DB ORIGINAL - QUE NÃO RECEBE UM BANCO NOS ARGUMENTOS ##########
+
+## FUNÇÃO create.db.regr(regr, std = FALSE) para filtrar os dados da Regr_XX e retornar o banco de dados pronto para utilizar na regressão
+### ARGUMENTO regr deve ser uma string com o nome do set de regressão (Ex: "Regr_01")
+### ARGUMENTO std é booleano - TRUE para padronizar os dados; DEFAULT = FALSE
+```{r}
+
+# com base no nome da regressão ("Regr_XX"), filtra os dados preditores e unifica com o y, para retornar o bd pronto para a regressão. 
+# Utiliza a lista de séries escolhidas que está na tabela list.pred para compor o BD
+# Utiliza os nomes da coluna 'Serie_sigla_semUF'
+
+# argumento regr deve ser um caracter com o nome da regressão igual ao da tabela list.pred (Ex: Regr_01)
+
+# teste do argumento regr
+#regr <- "Regr_01"
+
+create.db.regr <- function(regr, std = FALSE){
+  
+  #browser()
+  
+    # filtrando apenas as séries de 'regr'
+  db.pred <- list.pred %>% dplyr::filter(
+    get(regr) == 1
+  )
+  
+  # número de linhas do banco de dados filtrado para a 'regr'
+  nrow(db.pred)
+  
+  # vetor com os nomes das séries utilizadas na 'regr'
+  list.pred.regr <- unique(db.pred$Serie_sigla_semUF)
+  length(list.pred.regr) # número de séries na lista
+  
+  # vetor com os anos a serem selecionados (o máximo possível segundo os dados y)
+  anos <- as.character(seq(1987,2019,1)) 
+  
+  # filtra apenas as linhas que estão marcadas na coluna de 'regr' e em seguida filtra as colunas de interesse (Série e anos)
+  
+  db.x <- pred %>% 
+    dplyr::filter(
+    Serie_sigla_semUF %in% list.pred.regr # verificar nome da col 'Serie_sigla'
+    ) %>% 
+    dplyr::select(
+      Serie_sigla, Serie_sigla_semUF, all_of(anos)
+    )
+  
+  # check do número de séries em db.x
+  length(unique(db.x$Serie_sigla_semUF))
+  
+  # cria um banco de dados com as mesmas séries de 'regr', mas com as colunas por estado com os 'X' de quais devem ser usadas
+  regr.state <- list.pred %>% 
+    dplyr::filter(
+    Serie_sigla_semUF %in% list.pred.regr # verificar nome da col 'Serie_sigla'
+    ) %>% 
+    dplyr::select(
+      Granularidade, Serie_sigla_semUF, all_of(siglas)
+    )
+  
+  nrow(regr.state)
+  
+  # qual o maior ano de início dentre essas séries? (que não extrapolem 1987 e 2019)
+  ano.ini <- ifelse(max(db.pred$Ano_ini) < 1987, 1987, max(db.pred$Ano_ini))
+  ano.fim <- ifelse(min(db.pred$Ano_fim) > 2019, 2019, min(db.pred$Ano_fim))
+  
+  # vetor com os anos que serão utilizados na Regr_01
+  anos.regr <- as.character(seq(ano.ini,ano.fim,1))
+  length(anos.regr)
+  
+  
+  # cria uma coluna para os estados com base na couna Serie_sigla
+  db.x$Estado <- str_split(
+    string = db.x$Serie_sigla, # strings
+    pattern =  "_", # caracter que dividirá o string
+    n = 4,  # divide em 2 pedaços apenas
+    simplify = TRUE # para retornar uma matriz
+              )[,4] # selecionando apenas a primeira coluna da matriz
+  
+  
+  # junta as duas tabelas - adiciona as linhas de uma em outra, contando que as colunas possuem o mesmo nome
+  db.regr <- rbind(db.y, db.x)
+  
+  # seleciona apenas os anos do vetor de anos de regr
+  db.regr <- db.regr %>% dplyr::select(
+    Serie_sigla_semUF, Serie_sigla, Estado, all_of(anos.regr)
+  )
+  
+  
+  #### CONFERINDO BANCO DE DADOS FILTRADO
+  # conferindo número de registros para cada estado
+  table(db.regr$Estado)
+  # deve somar o número de séries de 'regr' + 1 (y)
+  
+  # conferindo número de séries filtradas
+  unique(db.regr$Serie_sigla_semUF)
+  
+  #conferindo quais não foram selecionadas
+  check.series <-  list.pred.regr %in% unique(db.regr$Serie_sigla_semUF)
+  list.pred.regr[!check.series] # deve ser vazio!
+ 
+  # cria um vetor com todas as séries incluindo "y" para a regressão 'regr':
+  list.regr <- c("y", list.pred.regr)
+  
+
+  
+  ### criar um objeto list que contém o banco de dados para cada estado em cada um dos níveis
+  ## para os dados nacionais o campo Estado é "" (empty string)
+  # para cada estado, verificar se na tabela list.pred existe um "X" marcado ou não: se sim, utilizar no estado, se não, remover
+  
+  
+  # cria o objeto que vai receber todos os data.frames em forma de lista
+  db.regr.list <- as.list(siglas)
+  names(db.regr.list) <- siglas
+  #db.regr.list <- NA
+  
+  # para testes do for
+  #e <- "MT" # apenas para testes
+  
+  db.regr.list <- list()
+  
+  for (e in siglas) {
+    
+    # check dos valores da coluna do estado (deve haver apenas "" e X)
+    (unique(regr.state[e]))
+    print(e)
+    
+    # criar vetor temporário do estado para ver quais séries devem ser selecionadas
+    # o primeiro valor será sempre TRUE pois corresponde a série y
+    state.series <- rbind(c(TRUE),regr.state[e] == "X")
+    
+    # vetor com os nomes das séries que devem ser selecionadas para o estado em questão:
+    list.state <- list.regr[state.series]
+    
+    #unique(db.regr$Estado) # não há valores 'NA' e sim 'empty string' = ""
+    #db.temp <- db.regr %>% dplyr::filter(Estado == "")
+    
+    #e = "MT"
+    
+    db.temp.e <- as.data.frame(db.regr %>%  # UTILIZAR 2 COLCHETES!!!! ACESSAR O NÍVEL INTERNO
+      dplyr::filter(
+        Serie_sigla_semUF %in%  list.state & (Estado == e | Estado == "")))
+    
+    
+    # seleciona apenas as colunas numéricas que serão transpostas
+    db.temp.e <- db.temp.e %>% dplyr::select(
+      Serie_sigla_semUF, all_of(anos.regr)
+      )
+
+  # transpõe a matriz para que os anos fiquem nas linhas e as séries na colunas, pois a função de regressão trabalha assim
+  db.temp.e <- as.data.frame(data.table::transpose(db.temp.e,
+                                                  make.names = "Serie_sigla_semUF", # coluna antes da transposição que contém os   nomes que serão transformados nos nomes das colunas
+                                                  keep.names = "Ano") # nome da primeira coluna que será criada, com os nomes das   colunas antes da transposição
+                            )
+
+  # transforma a coluna "Ano" em nome das linhas
+  db.temp.e <- db.temp.e %>% column_to_rownames(var = "Ano")
+  
+  ### PADRONIZA OS DADOS (POR COLUNA - FUNÇÃO BASE::SCALE) <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+  if(std){ # realiza a padronização dos dados se o argumento std for TRUE
+    db.temp.e <- as.data.frame(db.temp.e %>% base::scale())
+  }
+  
+  # adiciona o data.frame na lista com o nome do estado da vez
+  db.regr.list[[e]] <- db.temp.e
+
+ 
+    }   #### FIM DA FOR QUE CRIA A LISTA DE BANCO DE DADOS POR ESTADO
+  
+
+# Visualizando o item 1 da lista
+# teste1 <- db.regr.list[1] # retorna um list com um data frame dentro
+# teste2 <- db.regr.list[[1]] # retorna o data.frame como data.frame (acessa o nível interno)
+
+
+  return(db.regr.list) # retorna a lista com os data.frames para cada estado (nomeada)
+}   #### FIM DA FUNÇÃO DE RETORNA O DB PARA REGRESSÕES
+
+
+
+```
