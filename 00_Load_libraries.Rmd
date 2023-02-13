@@ -1,0 +1,60 @@
+---
+title: "Load_libraries"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+# instalação/load dos pacotes
+```{r}
+## Install and load libraries (every time when opening the project!)
+
+#Pacotes utilizados (até jtools é cópia do script da aula 2 de 'Multinível' (Fávero):
+libraries <- c("plotly","tidyverse","reshape2","knitr","kableExtra",
+             "nlme","lmtest","fastDummies","msm","lmeInfo","jtools", "shiny", "tidyr", "data.table", "plyr", "sf","tmap","rgdal","rgeos", "dtw", "dtwclust", "factoextra", "ggdendro", "dendextend", "NbClust", "ggrepel", "directlabels", "geomtextpath", "tcltk", "svDialogs","scales", "Hmisc","corrplot", "heatmaply", "vegan", "cluster", "gg.layers")
+
+# Pacotes adicionados:
+# *tidyr para usar as funções gather() e spread() (long<-->wide)
+# *shiny para poder abrir interativamente janelas
+# *data.table --> função fread e outros jeitos de manipular data.frames
+# *plyr --> função mapvalues ('procv')
+# *sf,tmap,rgdal,rgeos : shapefiles e mapas
+# dtw , dtwclust --> clusterização de séries temporais com dtw
+# factoextra --> visualização de dendrogramas
+# ggdendro --> para 'capturar' os dados de dendros e plotar no ggplot
+# dendextend --> função tanglegram para comparar 2 cluster hierárquicos
+# NbClust --> para determinar número ótimo de clusters
+# ggrepel --> labels em gráficos ggplot
+# directlabels e geomtextpath --> tentativas de labels nas linhas de time series
+# tcltk e svDialogs --> para janelas de mensagem / escolha de diretório, etc
+# scales --> para transformações no ggplot (ex: percentual)
+# Hmisc --> cálculo de correlações
+# corrplot --> plot de matriz de correlações
+# heatmaply --> matriz de correlação com dendograma
+# vegan --> para usar função cascadeKM (comparativo de partição de k-means)
+# cluster --> função clusplot para visualizar a variabilidade de clusters
+# gg.layers --> função geom_boxplot2 : sem outliers e com escala ajustada
+
+if(sum(as.numeric(!libraries %in% installed.packages())) != 0){
+  installer <- libraries[!libraries %in% installed.packages()]
+  for(i in 1:length(installer)) {
+    install.packages(installer, dependencies = T)
+    break()}
+  sapply(libraries, require, character = T) 
+} else {
+  sapply(libraries, require, character = T) 
+}
+
+rm(installer) # remove os objetos criados nesse chunk
+rm(libraries)
+
+```
+
+# rodar só se necessário
+```{r}
+
+# requerido para exportar heatmaply_cor
+webshot::install_phantomjs()
+
+```
+
+
