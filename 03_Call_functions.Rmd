@@ -1,0 +1,289 @@
+---
+title: "Rodando_testes"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# Geração de regressões, tabelas e gráficos para TODAS as "Regr_XX" (colunas da tabela 'list.pred') - SEM PADRONIZAÇÃO
+```{r}
+
+# cria a lista que receberá todos os bancos de dados
+db.regrXX <- list()
+
+# cria o objeto que receberá todos os modelos stepwise
+regrXX.step.models <- list()
+
+# cria o objeto que receberá as tabelas com os coeficientes e séries
+regrXX.table.series <- list()
+
+# cria o objeto que receberá os bancos de dados para plots
+regrXX.db.plot <- list()
+
+# cria o objeto que receberá os ggplots
+regrXX.plots <- list()
+
+# para teste
+#r <- regrXX[1]
+
+for (r in regrXX) {
+  
+  # cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX[[r]] <- create.db.regr(r)
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models[[r]] <- stepwise.model(db.regrXX[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series[[r]] <- table.series(r, regrXX.step.models[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot[[r]] <- create.db.plot(regrXX.step.models[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots[[r]] <- plot.yyhat(r ,regrXX.db.plot[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_",Sys.Date(),".jpg"
+    ))
+
+}
+
+#plot(regrXX.plots[[r]])
+
+```
+
+
+# ADICIONANDO SETS DE REGRESSÃO
+# GERAÇÃO DOS DADOS PARA APENAS ALGUNS DOS SETS DE REGRESSÃO 
+# SEM PADRONIZAÇÃO
+```{r}
+
+#add <- c("Regr_26") # mudar/acrescentar nomes para o(s) número(s) do(s) set(s) que se deseja obter os objetos
+add <- c(paste0("Regr_",seq(104,105,1)))
+#add <- c("Regr_100")
+
+## Séries rodadas novamente por causa de alteração nos estados que devem ser considerados nas séries de preços das commodities de SUGAR e SOYBEANS
+add <- c(
+  "Regr_01",	"Regr_02",	"Regr_05",	"Regr_10",	"Regr_12",	"Regr_18",	"Regr_22",	"Regr_23",	"Regr_25",	"Regr_26",	"Regr_28",	"Regr_29",	"Regr_31",	"Regr_32",	"Regr_36",	"Regr_38",	"Regr_39",	"Regr_41",	"Regr_42",	"Regr_43",	"Regr_44",	"Regr_45",	"Regr_46",	"Regr_47",	"Regr_48",	"Regr_51",	"Regr_52",	"Regr_53",	"Regr_54",	"Regr_55",	"Regr_56",	"Regr_57",	"Regr_58",	"Regr_59",	"Regr_60",	"Regr_61",	"Regr_62",	"Regr_63",	"Regr_64",	"Regr_65",	"Regr_66",	"Regr_67",	"Regr_68",	"Regr_69",	"Regr_70",	"Regr_71",	"Regr_72",	"Regr_73",	"Regr_74",	"Regr_75",	"Regr_76",	"Regr_77",	"Regr_78",	"Regr_79",	"Regr_80",	"Regr_81",	"Regr_82",	"Regr_83",	"Regr_84",	"Regr_85",	"Regr_86",	"Regr_87",	"Regr_88",	"Regr_89",	"Regr_90",	"Regr_91",	"Regr_92",	"Regr_93",	"Regr_94",	"Regr_95",	"Regr_96",	"Regr_97",	"Regr_100",	"Regr_101",	"Regr_106",	"Regr_107",	"Regr_108",	"Regr_109",	"Regr_110", "Regr_111", "Regr_112", "Regr_113", "Regr_114", "Regr_115"
+)
+
+add <- c(paste0("Regr_",seq(125,126,1)))
+
+add <- "Regr_124"
+
+
+for (r in add) {
+
+# cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX[[r]] <- create.db.regr(r)
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models[[r]] <- stepwise.model(db.regrXX[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series[[r]] <- table.series(r, regrXX.step.models[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot[[r]] <- create.db.plot(regrXX.step.models[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots[[r]] <- plot.yyhat(r ,regrXX.db.plot[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_",Sys.Date(),".jpg"
+    ))
+
+} # fim do FOR
+  
+```
+
+
+# Geração de regressões, tabelas e gráficos para TODAS as "Regr_XX" (colunas da tabela 'list.pred')
+# COM PADRONIZAÇÃO
+```{r}
+
+# cria a lista que receberá todos os bancos de dados
+db.regrXX.std <- list()
+
+# cria o objeto que receberá todos os modelos stepwise
+regrXX.step.models.std <- list()
+
+# cria o objeto que receberá as tabelas com os coeficientes e séries
+regrXX.table.series.std <- list()
+
+# cria o objeto que receberá os bancos de dados para plots
+regrXX.db.plot.std <- list()
+
+# cria o objeto que receberá os ggplots
+regrXX.plots.std <- list()
+
+# para teste
+#r <- regrXX[1]
+
+
+add <- regrXX # para tudo
+add <- c(paste0("Regr_",seq(104,105,1))) # para alguns sets
+add <- "Regr_106"
+
+for (r in add) {
+  
+  # cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX.std[[r]] <- create.db.regr(r, std = TRUE)
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models.std[[r]] <- stepwise.model(db.regrXX.std[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series.std[[r]] <- table.series(r, regrXX.step.models.std[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_std_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot.std[[r]] <- create.db.plot(regrXX.step.models.std[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots.std[[r]] <- plot.yyhat(r ,regrXX.db.plot.std[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_std_",Sys.Date(),".jpg"
+    ))
+
+}
+
+#plot(regrXX.plots[[r]])
+
+```
+
+
+# Geração de regressões, tabelas e gráficos para TODAS as "Regr_XX" (colunas da tabela 'list.pred')
+# COM TAXAS
+```{r}
+
+# cria a lista que receberá todos os bancos de dados
+db.regrXX.tx <- list()
+
+# cria o objeto que receberá todos os modelos stepwise
+regrXX.step.models.tx <- list()
+
+# cria o objeto que receberá as tabelas com os coeficientes e séries
+regrXX.table.series.tx <- list()
+
+# cria o objeto que receberá os bancos de dados para plots
+regrXX.db.plot.tx <- list()
+
+# cria o objeto que receberá os ggplots
+regrXX.plots.tx <- list()
+
+# para teste
+#r <- regrXX[1]
+r <- regrXX
+
+for (r in regrXX) {
+  
+  # cria o banco de dados que será o input para o algoritmo de regressão
+  db.regrXX.tx[[r]] <- create.db.regr(r, ano.i = 1992, dbX = pred.taxa, dbY = db.y.taxa)
+  
+  # calcula os modelos stepwise para o nome do banco de dados informado (criado no passo anterior)
+  regrXX.step.models.tx[[r]] <- stepwise.model(db.regrXX.tx[[r]])
+  
+  # tabula os resultados dos modelos stepwise para todos os estados
+  (regrXX.table.series.tx[[r]] <- table.series(r, regrXX.step.models.tx[[r]])) %>% 
+    data.table::fwrite(paste0(
+      r,"_coefs_e_series_tx_",Sys.Date(),".csv"
+    ))
+  
+  
+  # cria um banco de dados que pode ser utilizado para plot de y x yhat
+  regrXX.db.plot.tx[[r]] <- create.db.plot(regrXX.step.models.tx[[r]])
+  
+  # plota os gráficos de y x yhat para todos os estados
+  (regrXX.plots.tx[[r]] <- plot.yyhat(r ,regrXX.db.plot.tx[[r]])) %>% 
+    ggsave(filename = paste0(
+      r,"_plot_yyhat_tx_",Sys.Date(),".jpg"
+    ))
+
+}
+
+db.regrXX.tx$Regr_01$AP
+
+#plot(regrXX.plots[[r]])
+
+```
+
+
+# POR CLUSTER:
+# Chamando as funções e armazenando/salvando arquivos
+```{r}
+
+# salva as tabelas dos sets de regressão segundo a ordem dos clusters no agrup. hier.
+regrXX.table.series.order <- order.table.series()
+
+# banco de dados que contém o número e ordem dos clusters, para usar nos plots
+regrXX.db.plot.order <- add.clus.db.plot()
+
+# ggplots com facet na ordem dos estados segundo agrup. hier.
+regrXX.plots.order <- plot.yyhat.order()
+#regrXX.plots.order$Regr_01
+
+# ggplots por set de regressão e por ordem de cluster (não por número do cluster!)
+regrXX.plots.by.clus <- plot.yyhat.by.clus()
+
+regrXX.plots.by.clus$Regr_01[[1]]
+
+```
+
+
+# SUMÁRIO-COEFICIENTES E EDA DAS PREDITORAS # apenas teste - chamando de verdade no script 05
+# Chamando as novas funções de sumário e coeficientes
+```{r}
+
+teste.summ <- table.summ(regrXX.step.models$Regr_01)
+
+teste.coef <- table.coef(teste.summ)
+
+teste.table.model <- table.model("Regr_01", regrXX.step.models$Regr_01, teste.summ, teste.coef)
+# naõ salva a tabela! salvar separado com o objeto recebido
+
+options(scipen = 9999)
+teste.table.model
+
+
+
+
+#summary(regrXX.step.models$Regr_01$AC)
+#anova(regrXX.step.models$Regr_01$AC)
+#teste.print <- print(teste.summ$AC)
+#teste.summ$AC$r.squared
+#teste.summ$AC$adj.r.squared
+#teste.summ$AC$fstatistic
+# calculando o p-value associado ao F-test
+#pf(29.68284,  4.00000, 24.00000 , lower.tail = FALSE)
+
+```
+
+# Chamando a nova função de banco de dados para y x pred e plot ypred
+```{r}
+
+# utilizar dados padronizados!
+teste.ypred <- create.db.plot.ypred(db.regrXX.std$Regr_01)
+
+plot.ypred("Regr_01", teste.ypred, 5, 6)
+
+```
+
+
+
+
