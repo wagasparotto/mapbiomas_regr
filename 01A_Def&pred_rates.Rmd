@@ -1,0 +1,144 @@
+---
+title: "05_Def_rates"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+# DESMATAMENTO - Y - Coluna que represente a taxa de variação na área desmatada em relação ao ano anterior
+```{r}
+
+## Não é possível ter uma taxa para o ano de 1987 - em 1988 ficará registrado quantos % a mais ou menos foi desmatado
+### Quando o estado atinge a estabilidade, porém em um número absoluto maior, a taxa de variação capturará melhor um aumento ou diminuição da área desmatada (verdadeiro?)
+
+# db.y é utilizado na função de criar o banco de dados para a regressão, portanto é nele que deve ser adicionada a coluna
+glimpse(db.y)
+# Estados nas linhas, anos nas colunas
+# ano de 1988 é igual a (1988-1987)/1987, e assim por diante
+
+db.y.taxa <- data.frame(db.y["Estado"])
+
+# para testes
+#a <- "1988"
+
+for (a in anos[-1]) { # retira o ano de 1987
+  
+  ano.anterior <- as.character(as.numeric(a) - 1) # cria uma string com o nome do ano anterior
+  
+  db.y.taxa[a] <- (db.y[a] - db.y[ano.anterior])/db.y[ano.anterior] # faz as operações de subtração e divisão
+}
+
+
+```
+
+# DESMATAMENTO - Y - Criando banco de dados com valores absolutos e relativos para gráficos comparativos (db.y.ambos e *.long)
+## Alterando o banco de dados pred.taxa para deixar pronto para a função 'create'
+## Salvando arquivo do db pred.taxa
+```{r}
+
+db.y.ambos <- db.y[,c(-2,-35,-36)]
+db.y.ambos$Tipo <- "Absoluto"
+
+db.y.taxa$Tipo <- "Taxa"
+
+db.y.ambos <- rbind(db.y.ambos, db.y.taxa)
+
+db.y.ambos.long <- db.y.ambos %>% 
+  dplyr::select(Estado, Tipo, everything()) %>% #reordenando colunas
+  data.table::melt(
+  id.vars = c(names(.)[1:2]), # mantém as colunas categóricas
+  na.rm = FALSE, #mantém valores NA no long
+  variable.name = "Ano" # nome da nova coluna 'melted'
+) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+
+# transformando a coluna "Anos" em numérica (que é um factor com números, portanto para caracter primeiro)
+db.y.ambos.long$Ano <- as.numeric(as.character(db.y.ambos.long$Ano))
+
+db.y.taxa$Tipo <- NULL
+
+db.y.taxa$Serie_sigla <- "y"
+db.y.taxa$Serie_sigla_semUF <- "y"
+
+pred.taxa %>% data.table::fwrite(paste0("Var_pred_taxas_", Sys.Date(),".csv"))
+
+
+```
+
+# DESMATAMENTO - Y - Plot dos dados: absolutos x taxa
+```{r}
+
+db.y.ambos.long %>% 
+  dplyr::filter(Estado == "AC") %>% 
+  ggplot() +
+  geom_line(
+    aes(x = Ano,
+        y = value),
+    size = 1
+  ) +
+  facet_wrap(~Tipo,
+             scales = "free") +
+  theme_bw()
+
+```
+
+
+
+# PREDITORES - X - Banco de dados com taxas ao invés de valores absolutos (1986 a 2020)
+```{r}
+
+# APENAS PARA AS SÉRIES QUE JÁ NÃO SÃO TAXAS
+# FILTRAR AS QUE NÃO SÃO TAXAS
+
+glimpse(pred)
+
+unique(pred$Unidade)
+#[1] "BRL"        "USD"        "%a.a."      "Kg"         "ha"         "Kg/ha"      "ton"        "kg/ha"      "indice"    
+#[10] "sacas"      "m3"         "BRL/USD"    "BRL/m3"     "BRL/50kg"   "BRL/60kg"   "BRL/kg"     "BRL/arrob"  "BRL/ton"   
+#[19] "%PIB"       "pop"        "%pop"       "un"         "USD/mt"     "USD/kg"     "USD/m3"     "USD/sheet"  "USD/dmtu"  
+#[28] "USD/troyoz" "dUSD/sheet" "autuacao"   "cabecas"    "dummy"  
+
+# TARGET PARA NÃO MODIFICAR: %a.a. , dummy
+
+# filtro dos registros que não são taxas e dummy
+pred.notTaxa <- pred %>% 
+  dplyr::filter(Unidade != "%a.a." & Unidade != "dummy")
+
+
+# para testes
+#a <- "1986"
+
+# 'inicializa' o data.frame de taxas, pegandos as colunas que não se alteram (filtrado)
+pred.taxa <- data.frame(pred.notTaxa[,1:14])
+
+
+# testando a classe do vetor anos.total
+class(anos.total) # é numérico!
+
+
+for (a in as.character(anos.total[-1])) { # retira o ano de 1985
+  
+  ano.anterior <- as.character(as.numeric(a) - 1) # cria uma string com o nome do ano anterior
+  
+  pred.taxa[a] <- (pred.notTaxa[a] - pred.notTaxa[ano.anterior])/pred.notTaxa[ano.anterior] 
+} # fim do FOR
+
+
+names(pred.taxa)[9] <-'Missing_values_1989-2017' # trocou traço por ponto no nome da coluna (alguma função)
+
+
+# unificando com as linhas que são taxas
+pred.taxa <- rbind(
+  pred.taxa,
+  (pred %>% dplyr::filter(Unidade == "%a.a." | Unidade == "dummy"))[,-15] # removendo 1985
+  )
+
+#temp <- (pred %>% dplyr::filter(Unidade == "%a.a." | Unidade == "dummy"))[,-15]
+
+
+```
+
