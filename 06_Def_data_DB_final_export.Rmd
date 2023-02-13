@@ -1,0 +1,33 @@
+---
+title: "def_data_final"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Consulta aos BDs de def_data para exportação do Banco de Dados final que será utilizado
+## como variável resposta (dependente)
+```{r}
+
+# dados originais, sem coluna padronizada nem os clusters
+glimpse(def_data)
+head(def_data)
+
+## data.frame criado no script Def_clusters_finais, utilizando a clusterização hierárquica,
+## pelo método ward, com 7 grupos, realizando um inner_join com o data.frame def_data, e 
+## adicionando uma coluna com os dados padronizados ao final (std)
+glimpse(def_data_cluster_final)
+head(def_data_cluster_final)
+
+# check dos estados vs. clusters
+data.table::fwrite(fil = paste0("check_Estados_vs_clusters_def_cluster_final_",Sys.Date(),".csv"),
+                   x = def_cluster_final)
+
+def_data_cluster_final %>% fwrite(paste0("DB_Var_target_",Sys.Date(),".csv"))
+
+```
+
