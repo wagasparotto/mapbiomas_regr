@@ -1,0 +1,229 @@
+---
+title: "Análises por clusters"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## VETORES E TABELAS AUXILIARES - RODAR ANTES DE UTILIZAR AS FUNÇÕES QUE UTILIZAM OS CLUSTERS
+## Gerando uma tabela com os estados e o número do cluster a que pertencem (state.clus)
+```{r}
+
+# banco de dados das variáveis target com coluna "Cluster"
+glimpse(targ)
+
+# gera uma tabela com os nomes dos estados e número dos clusters
+state.clus <- targ %>% dplyr::select(Sigla = Estado, Cluster)
+
+# utiliza a função duplicated como vetor lógico para selecionar apenas a primeira linha que contém o estado e o número do cluster
+state.clus <- state.clus[!duplicated(state.clus),]
+
+glimpse(state.clus)
+
+state.clus <- inner_join(statesBR, state.clus, by = "Sigla")
+
+```
+
+## data.frame (clus.hier.order) com a ordem dos clusters (1 a 7) segundo o agrupamento hierárquico (distâcias)
+## e também um objeto factor (clus.hier.fact) com nomes igual aos clusters e valores igual a ordem de 1 a 7 (para 'procv')
+```{r}
+
+# ordem dos estados no cluster hierárquico (valores igual a 1 a 27 e levels = estados)
+states.hier.order <- factor(seq(1,27,1), levels = seq(1,27,1))
+
+names(states.hier.order) <- c("PB","RN","PE","CE","BA","SC","ES","SP","AL","RJ","SE","GO","MS","MG","DF","PR","AP","MA","TO","PA","AC","MT","RO","PI","RS","AM","RR")
+
+states.hier.order.df <- data.frame(Sigla = names(states.hier.order), StateOrder = seq(1,27,1))
+
+states.hier.order
+
+
+# factor (procurar o número do cluster nos nomes e pegar o valor de fato ex: clus.hier.fact['3'] retorna 7 - último cluster)
+clus.hier.fact <- factor(seq(1,7,1) , levels = c(6,2,5,4,1,7,3))
+names(clus.hier.fact) <- c(6,2,5,4,1,7,3)
+
+# data frame para inner_join
+clus.hier.order <- as.data.frame(c(6,2,5,4,1,7,3))
+names(clus.hier.order) <- "Cluster"
+clus.hier.order <- rownames_to_column(clus.hier.order, var = "ClusOrder")
+
+```
+
+## Cria uma coluna com essa nova ordem em 'state.clus'
+```{r}
+
+#state.clus$Order <- NULL
+
+# juntando a coluna de ordem com o os estados
+state.clus <- inner_join(state.clus, clus.hier.order, by = "Cluster")
+state.clus$Cluster <- factor(state.clus$Cluster, levels = c(6,2,5,4,1,7,3))
+
+# unindo com o df que contém a ordem por estado
+state.clus <- inner_join(state.clus, states.hier.order.df, by = "Sigla")
+
+
+# organiza a tabela segundo Order, Regiao e Estado e depois coloca a numeração em uma nova coluna (ordem de cada estado)
+state.clus <- dplyr::arrange(state.clus, StateOrder)
+#state.clus$OrderUF <- factor(seq(1,27,1), levels = seq(1,27,1))
+
+```
+
+### Considerar a ordem do agrupamento hierárquico? (fazer o alfabético dentro da ordem dele de distâncias)
+```{r}
+
+
+# criando um vetor com as siglas na ordem dos clusters hierárquicos, por região e alfabético pelo nome do estado
+siglas.hier <- dplyr::arrange(state.clus, Order, Regiao, Estado) %>% dplyr::select(Sigla)
+
+# Criando um factor com essa sequência, para inserir onde for necessário
+siglas.hier.fact <- factor(siglas.hier[,"Sigla"], levels = siglas.hier[,"Sigla"])
+
+num.hier <- dplyr::arrange(state.clus, Order, Regiao, Estado) %>% dplyr::select(Order)
+
+
+```
+
+
+# FUNÇÃO order.table.series
+## CHAMADA DELA MESMA - INICIALIZA O OBJETO NESSE CHUNK - regrXX.table.series.order
+## Ordenando as tabelas dos coeficientes pela ordem dos clusters hierárquicos e salvando arquivos .csv
+```{r}
+# para testes
+#r <- "Regr_01"
+
+# cria tabelas com a ordem dos estados segundo os clusters e depois salva um arquivo
+order.table.series <- function(){
+  
+  table <- list()
+  
+  for (r in regrXX) {
+  
+  #teste.table <- regrXX.table.series[[r]] %>% 
+  #   dplyr::select(Serie_sigla_semUF, all_of(siglas.hier.fact)) %>% 
+  #   rbind(c("Cluster", num.hier[,"Order"]))
+  
+   (table[[r]] <- regrXX.table.series[[r]] %>% 
+       dplyr::select(Serie_sigla_semUF, all_of(siglas.hier.fact)) %>%
+     rbind(c("Cluster", num.hier[,"Order"]))) %>% 
+      data.table::fwrite(paste0(
+        r,"_coefs_e_series_by_clusOrder_",Sys.Date(),".csv"
+      ))
+  } # fim do FOR dos sets de regressões
+  
+  return(table)
+} # fim da FUNÇÃO
+
+```
+
+# FUNÇÃO add.clus.db.plot
+### Acrescentar o número dos cluster no banco de dados dos plots
+```{r}
+
+add.clus.db.plot <- function(){
+  # cria tabelas com a ordem dos estados segundo os clusters e depois salva um arquivo
+  
+  db <- list()
+  
+  for (r in regrXX) {
+  
+    db[[r]] <- merge(regrXX.db.plot[[r]], state.clus, by.x = "Estado", by.y = "Sigla")
+    
+  } # fim do FOR dos sets de regressão
+  
+  return(db)
+} # fim da FUNÇÃO
+
+```
+
+# FUNÇÃO plot.yyhat.order
+### Fazer os plots com os novos dbs que contém a ordem por estado como factor na coluna OrderUF
+```{r}
+
+# para testes
+#r <- "Regr_01"
+
+plot.yyhat.order <- function(){
+  
+  facet.labels <- state.clus[,"Sigla"]
+  names(facet.labels) <- as.character(state.clus[,"StateOrder"])
+  
+  plots <- list()
+  
+  for (r in regrXX) {
+    plots[[r]] <-
+      regrXX.db.plot.order[[r]] %>% ggplot() +
+          geom_line(aes(x = x, 
+                        y = y),
+                    color = "coral",
+                    size = 0.8) +
+          geom_line(aes(x = x, 
+                        y = yhat),
+                    color = "cornflowerblue",
+                    size = 0.8) +
+            facet_wrap(~ StateOrder,
+                       labeller = labeller(StateOrder = facet.labels),
+                       scales = "free_y",
+                       ncol = 4,
+                       nrow = 7) +
+            theme_bw(base_size = 7) +
+          scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0)) +
+          ggtitle(r)
+    
+  } # fim do FOR
+return(plots)
+} # fim da FUNÇÃO
+
+```
+
+## FUNÇÃO plot.yyhat.by.clus
+# Plots por cluster, para todos os sets de regressão
+```{r}
+
+#regr <- "Regr_01"
+plot.yyhat.by.clus <- function(){
+
+  plots <- list()
+  
+  facet.labels <- state.clus[,"Sigla"]
+  names(facet.labels) <- as.character(state.clus[,"StateOrder"])
+  
+   for (r in regrXX) {
+     
+     for (o in 1:7) {
+       
+       plots[[r]][[o]] <- 
+         regrXX.db.plot.order[[r]] %>% 
+          dplyr::filter(ClusOrder == o) %>% 
+          ggplot() +
+            geom_line(aes(x = x, 
+                          y = y),
+                      color = "coral",
+                      size = 0.8) +
+            geom_line(aes(x = x, 
+                          y = yhat),
+                      color = "cornflowerblue",
+                      size = 0.8) +
+              facet_wrap(~ StateOrder,
+                         labeller = labeller(StateOrder = facet.labels),
+                         scales = "free_y"#,
+                         #ncol = 4,
+                         #nrow = 7
+                         ) +
+              theme_bw(base_size = 7) +
+            scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+            theme(axis.text.x = element_text(angle = 90, vjust = 0)) +
+            ggtitle(paste(r, " Cluster Order = ",regrXX.db.plot.order[[r]]$ClusOrder, " Cluster n.= ", regrXX.db.plot.order[[r]]$Cluster))
+   } # fim do FOR dos clusters / order
+  } # fim do FOR dos sets de regressão
+  
+  return(plots)
+} # fim da FUNÇÃO
+
+```
+
+
