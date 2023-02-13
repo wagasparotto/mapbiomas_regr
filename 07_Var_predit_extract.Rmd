@@ -1,0 +1,593 @@
+---
+title: "Var_predit"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Script para extração dos dados de tabelas de dados preditores que estão em formato muito chato para realizar as operações no excel
+
+### IBGE_POPULACAO_uf
+```{r}
+
+# importação da tabela:  
+IBGEpop <- data.table::fread(choose.files(multi = FALSE))
+
+# encoding = "UTF-8"
+
+IBGEpop.dcast <- IBGEpop %>% data.table::dcast(
+  formula = sigla_uf ~ ano, # Mantém os estados (silgas nas linhas e leva os anos para as cols)
+  value.var = "populacao" # coluna com os valores a serem utilizados
+)
+
+# salva a tabela no formato adequado:
+IBGEpop.dcast %>% fwrite("IBGE_POPULACAO_uf_wide_anos.csv")
+
+```
+
+## IBGE_MADEIRA_quantidade_produzida_extracao_vegetal_1986-2020_Tabela1
+```{r}
+# importação da tabela:  
+IBGEmad_tab1 <- as.data.frame(data.table::fread(choose.files(multi = FALSE), 
+                                  skip = 3, # pula as 3 primeiras linhas
+                                  encoding = "Latin-1"))
+
+cols.rm <- data.frame()
+i <- 1L
+# is.na(IBGEmad_tab1[,i]) # teste
+
+# pegando o índice das colunas que só tem NA para remover depois
+for (i in 1:length(IBGEmad_tab1[1,])) {
+  if(all(is.na(IBGEmad_tab1[,i]))){
+    cols.rm <- rbind(cols.rm,i)
+  }
+}
+
+
+# removendo as colunas que só tem NA
+IBGEmad_tab1[,unlist(cols.rm)] <- NULL
+length(IBGEmad_tab1) # checando o novo comprimento
+
+#IBGEmad_tab1_anos <- as.data.frame(IBGEmad_tab1[1,]) # transforma em data.frame
+# o acesso aos índices de um data.table é diferente.
+
+# valores únicos da linha dos anos, para utilizar no for
+unique_anos <- unique(as.numeric(IBGEmad_tab1[1,]))
+unique_anos <- unique_anos[-1] # remove o 1o valor, NA, que também foi incluído nos 'unique'
+
+# inicializa objetos para o for
+linha_anos <- data.frame()
+temp.ano <- NA
+i <- 1L
+
+# replica o valor dos anos em todas as colunas consecutivas a 1a vez que ele aparece, até
+# que outro valor ocorra.
+for (i in 1:length(IBGEmad_tab1[1,])) {
+  if (any(IBGEmad_tab1[1,i] %in% unique_anos)) { # se a coluna contém valor de um ano
+    temp.ano <- IBGEmad_tab1[1,i] # aplica esse valor no temporário
+  }
+  else {
+    IBGEmad_tab1[1,i] <- temp.ano # se não, aplica o valor do temporário na coluna
+  }
+}
+
+
+# mesmo procedimento para a segunda linha, que contém as categorias
+
+# valores únicos da linha de categorias, para utilizar no for
+unique_cat <- unique(as.character(IBGEmad_tab1[2,]))
+unique_cat <- unique_cat[-1:-2] # remove o 1o e 2o valores, "" e NA, que também foram incluídos
+
+# inicializa objetos para o for
+linha_cat <- data.frame()
+temp.cat <- NA
+i <- 1L
+
+
+for (i in 1:length(IBGEmad_tab1[2,])) {
+  if (any(IBGEmad_tab1[2,i] %in% unique_cat)) { # se a coluna contém valor de um ano
+    temp.cat <- IBGEmad_tab1[2,i] # aplica esse valor no temporário
+  }
+  else {
+    IBGEmad_tab1[2,i] <- paste0(temp.cat,":unidade") # se não, aplica o valor do temporário na coluna
+  }
+}
+
+
+# inserindo os valores combinandos das 2 primeiras linhas como nomes das colunas
+names(IBGEmad_tab1) <- paste0(IBGEmad_tab1[1,],"_",IBGEmad_tab1[2,])
+  
+# removendo as 2 primeiras linhas
+IBGEmad_tab1 <- IBGEmad_tab1[-1:-2,]
+
+# removendo a última linha
+IBGEmad_tab1 <- IBGEmad_tab1[-28,]
+
+# removendo as duas primeiras colunas
+IBGEmad_tab1 <- IBGEmad_tab1[,-1:-2]
+
+# renomeando a primeira coluna
+names(IBGEmad_tab1)[1] <- "Estado"
+
+
+
+
+# operação de melt para transformar em formato long:
+
+IBGEmad.melt <- IBGEmad_tab1 %>%  data.table::melt(
+  id.vars = "Estado", # mantém a primeira coluna
+  na.rm = FALSE, # mantém valores NA no long
+  variable.name = "Ano_categ" # nome da nova coluna 'melted'
+) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+
+
+# criando as colunas de ano, categoria e unidade:
+
+IBGEmad.melt$Ano <- str_split(string = IBGEmad.melt$Ano_categ,
+                             pattern = "_",
+                             n = 2,
+                             simplify = TRUE)[,1] 
+
+IBGEmad.melt$Categ <- str_split(string = IBGEmad.melt$Ano_categ,
+                             pattern = "_",
+                             n = 2,
+                             simplify = TRUE)[,2] 
+
+IBGEmad.melt$Categ_num <- str_split(string = IBGEmad.melt$Categ,
+                             pattern = " ",
+                             n = 2,
+                             simplify = TRUE)[,1] 
+
+IBGEmad.melt$Unidade <- str_split(string = IBGEmad.melt$Categ,
+                             pattern = ":",
+                             n = 2,
+                             simplify = TRUE)[,2] 
+
+IBGEmad.melt %>% fwrite("IBGE_MADEIRA_qte_prouz_extrac_veg_Tabela1.csv")
+
+
+
+
+## Operações de dcast para colocar os anos nas colunas e manter as outras colunas
+IBGEmad_tab1_wide <- IBGEmad.melt %>% 
+  dplyr::select(Categ, Categ_num, Unidade, Estado, Ano, value) %>% 
+  data.table::dcast(
+  formula = ... ~ Ano, # Mantém os estados (silgas nas linhas e leva os anos para as cols)
+  value.var = "value" # coluna com os valores a serem utilizados
+)
+
+# para referência dos valores existentes
+unique_cat # valores dos itens
+
+## Vetor com as categorias escolhidas
+chosen.categ <- c(
+  "1 - Alimentícios",
+  "3 - Borrachas",
+  "4 - Ceras",
+  "5 - Fibras",
+  "7.1 - Carvão vegetal",
+  "7.2 - Lenha",
+  "7.3 - Madeira em tora",
+  "8 - Oleaginosos",
+  "9.1 - Pinheiro brasileiro (nó de pinho)",
+  "9.2 - Pinheiro brasileiro (árvores abatidas)",
+  "9.3 - Pinheiro brasileiro (madeira em tora)"
+)
+
+
+## Filtra as categorias escolhidas
+IBGEmad_tab1_filter <- IBGEmad_tab1_wide %>% dplyr::filter(
+  Categ %in% chosen.categ
+)
+
+# transforma no encoding UTF-8 antes de salvar a tabela
+IBGEmad_tab1_filter$Categ <- enc2utf8(IBGEmad_tab1_filter$Categ)
+IBGEmad_tab1_filter$Estado <- enc2utf8(IBGEmad_tab1_filter$Estado)
+
+## Salva a tabela filtrada
+IBGEmad_tab1_filter %>%  fwrite("IBGE_MADEIRA_Tabela1_wide_filter.csv")
+
+
+
+
+# acrescenta ":unidade" no nome das categorias escolhidas
+chosen.categ.un <- paste0(chosen.categ , ":unidade")
+
+
+## Filtra as linhas com as unidades das categorias escolhidas
+IBGEmad_tab1_filter.un <- IBGEmad_tab1_wide %>% dplyr::filter(
+  Categ %in% chosen.categ.un
+)
+  
+  # transforma no encoding UTF-8 antes de salvar a tabela
+IBGEmad_tab1_filter.un$Categ <- enc2utf8(IBGEmad_tab1_filter.un$Categ)
+IBGEmad_tab1_filter.un$Estado <- enc2utf8(IBGEmad_tab1_filter.un$Estado)
+
+
+## Salva a tabela de unidades filtrada
+IBGEmad_tab1_filter.un %>%  fwrite("IBGE_MADEIRA_Tabela1_wide_filter_unidades.csv")
+
+```
+
+## IBGE_PECUARIA_Efetivo_dos_rebanhos_ESTADOS_1974-2019
+```{r}
+# importação da tabela:  
+IBGEpec <- as.data.frame(data.table::fread(choose.files(multi = FALSE), 
+                                  skip = 3, # pula as 3 primeiras linhas
+                                  encoding = "Latin-1"))
+
+# removendo a última linha
+IBGEpec <- IBGEpec[-31,]
+
+
+cols.rm <- data.frame()
+i <- 1L
+# is.na(IBGEmad_tab1[,i]) # teste
+
+# pegando o índice das colunas que só tem NA para remover depois
+for (i in 1:length(IBGEpec[1,])) {
+  if(all(is.na(IBGEpec[,i]))){
+    cols.rm <- rbind(cols.rm,i)
+  }
+}
+
+
+# removendo as colunas que só tem NA
+IBGEpec[,unlist(cols.rm)] <- NULL
+length(IBGEpec) # checando o novo comprimento
+
+#IBGEmad_tab1_anos <- as.data.frame(IBGEmad_tab1[1,]) # transforma em data.frame
+# o acesso aos índices de um data.table é diferente.
+
+# valores únicos da linha dos anos, para utilizar no for
+unique_anos <- unique(as.numeric(IBGEpec[1,]))
+unique_anos <- unique_anos[-1] # remove o 1o valor, NA, que também foi incluído nos 'unique'
+
+# inicializa objetos para o for
+linha_anos <- data.frame()
+temp.ano <- NA
+i <- 1L
+
+# replica o valor dos anos em todas as colunas consecutivas a 1a vez que ele aparece, até
+# que outro valor ocorra.
+for (i in 1:length(IBGEpec[1,])) {
+  if (any(IBGEpec[1,i] %in% unique_anos)) { # se a coluna contém valor de um ano
+    temp.ano <- IBGEpec[1,i] # aplica esse valor no temporário
+  }
+  else {
+    IBGEpec[1,i] <- temp.ano # se não, aplica o valor do temporário na coluna
+  }
+}
+
+
+# mesmo procedimento para a segunda linha, que contém as categorias
+
+# valores únicos da linha de categorias, para utilizar no for
+unique_cat <- unique(as.character(IBGEpec[2,]))
+unique_cat <- unique_cat[-1:-2] # remove o 1o e 2o valores, "" e NA, que também foram incluídos
+
+# inicializa objetos para o for
+linha_cat <- data.frame()
+temp.cat <- NA
+i <- 1L
+
+
+for (i in 1:length(IBGEpec[2,])) {
+  if (any(IBGEpec[2,i] %in% unique_cat)) { # se a coluna contém valor de um ano
+    temp.cat <- IBGEpec[2,i] # aplica esse valor no temporário
+  }
+  else {
+    IBGEpec[2,i] <- paste0(temp.cat,":unidade") # se não, aplica o valor do temporário na coluna
+  }
+}
+
+
+# inserindo os valores combinandos das 2 primeiras linhas como nomes das colunas
+names(IBGEpec) <- paste0(IBGEpec[1,],"_",IBGEpec[2,])
+  
+# removendo as 2 primeiras linhas
+IBGEpec <- IBGEpec[-1:-2,]
+
+# removendo as duas primeiras colunas
+IBGEpec <- IBGEpec[,-1:-2]
+
+# renomeando a primeira coluna
+names(IBGEpec)[1] <- "Estado"
+
+
+
+
+# operação de melt para transformar em formato long:
+
+IBGEpec.melt <- IBGEpec %>%  data.table::melt(
+  id.vars = "Estado", # mantém a primeira coluna
+  na.rm = FALSE, # mantém valores NA no long
+  variable.name = "Ano_categ" # nome da nova coluna 'melted'
+) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+
+
+# criando as colunas de ano, categoria e unidade:
+
+IBGEpec.melt$Ano <- str_split(string = IBGEpec.melt$Ano_categ,
+                             pattern = "_",
+                             n = 2,
+                             simplify = TRUE)[,1] 
+
+IBGEpec.melt$Categ <- str_split(string = IBGEpec.melt$Ano_categ,
+                             pattern = "_",
+                             n = 2,
+                             simplify = TRUE)[,2] 
+
+IBGEpec.melt$Categ_num <- str_split(string = IBGEpec.melt$Categ,
+                             pattern = " ",
+                             n = 2,
+                             simplify = TRUE)[,1] 
+
+IBGEpec.melt$Unidade <- str_split(string = IBGEpec.melt$Categ,
+                             pattern = ":",
+                             n = 2,
+                             simplify = TRUE)[,2] 
+
+IBGEpec.melt %>% fwrite("IBGE_PECUARIA_efetivo_rebanhos_20220903.csv")
+
+
+
+
+## Operações de dcast para colocar os anos nas colunas e manter as outras colunas
+IBGEpec_wide <- IBGEpec.melt %>% 
+  dplyr::select(Categ, Categ_num, Unidade, Estado, Ano, value) %>% 
+  data.table::dcast(
+  formula = ... ~ Ano, # Mantém os estados (silgas nas linhas e leva os anos para as cols)
+  value.var = "value" # coluna com os valores a serem utilizados
+)
+
+# para referência dos valores existentes
+unique_cat # valores dos itens
+
+## Vetor com as categorias escolhidas
+chosen.categ <- c(
+  "Bovino",
+  "Bubalino",
+  "Caprino"
+)
+
+
+## Filtra as categorias escolhidas
+IBGEpec_filter <- IBGEpec_wide %>% dplyr::filter(
+  Categ %in% chosen.categ
+)
+
+# transforma no encoding UTF-8 antes de salvar a tabela
+IBGEpec_filter$Categ <- enc2utf8(IBGEpec_filter$Categ)
+IBGEpec_filter$Estado <- enc2utf8(IBGEpec_filter$Estado)
+
+## Salva a tabela filtrada
+IBGEpec_filter %>%  fwrite("IBGE_PECUARIA_wide_filter.csv")
+
+
+
+
+# acrescenta ":unidade" no nome das categorias escolhidas
+chosen.categ.un <- paste0(chosen.categ , ":unidade")
+
+
+## Filtra as linhas com as unidades das categorias escolhidas
+IBGEpec_filter.un <- IBGEpec_wide %>% dplyr::filter(
+  Categ %in% chosen.categ.un
+)
+  
+  # transforma no encoding UTF-8 antes de salvar a tabela
+IBGEpec_filter.un$Categ <- enc2utf8(IBGEpec_filter.un$Categ)
+IBGEpec_filter.un$Estado <- enc2utf8(IBGEpec_filter.un$Estado)
+
+
+## Salva a tabela de unidades filtrada
+IBGEpec_filter.un %>%  fwrite("IBGE_PECUARIA_wide_filter_unidades.csv")
+
+```
+
+
+
+## IBAMA_MEIO-AMB_auto_infracao
+```{r}
+
+# importação da tabela:  
+IBAMAaut <- as.data.frame(data.table::fread(choose.files(multi = FALSE)),
+                          encoding = "UTF-8")
+
+# verificando registros únicos nas colunas possivelmente interessantes
+#unique(IBAMAaut$TIPO_AUTO)
+#unique(IBAMAaut$SER_AUTO_INFRACAO)
+#unique(IBAMAaut$DAT_HORA_AUTO_INFRACAO)
+#unique(IBAMAaut$UF)
+#unique(IBAMAaut$INFRACAO_AREA)
+#unique(IBAMAaut$UNID_ARRECADACAO)
+#unique(IBAMAaut$GRAVIDADE_INFRACAO)
+
+# selecionando apenas colunas de possível interesse
+IBAMAaut.bd <- IBAMAaut %>% dplyr::select(
+  NUM_AUTO_INFRACAO,
+  TIPO_AUTO,
+  TIPO_INFRACAO,
+  VAL_AUTO_INFRACAO,
+  DAT_HORA_AUTO_INFRACAO,
+  UF,
+  COD_INFRACAO,
+  QTD_AREA,
+  INFRACAO_AREA,
+  CLASSIFICACAO_AREA
+)
+
+# criando uma coluna com o ano
+IBAMAaut.bd$DAT_HORA <- str_split(string = IBAMAaut.bd$DAT_HORA_AUTO_INFRACAO,
+                             pattern = " ",
+                             n = 2,
+                             simplify = TRUE)[,1]
+
+# classe da coluna com a data
+class(IBAMAaut.bd$DAT_HORA)
+
+IBAMAaut.bd$Ano <- str_split(string = IBAMAaut.bd$DAT_HORA,
+                             pattern = "/",
+                             n = 3,
+                             simplify = TRUE)[,3]
+
+unique(IBAMAaut.bd$Ano)
+#  [1] "2004" "2005" "2006" "2007" "2008" "2009" "2003" "2010" "2011" "2012" "2001" "1996"
+# [13] "1986" "1987" "1984" "1983" "1985" "1988" "1991" "1997" "1994" "1992" "1990" "1995"
+# [25] "1998" "2000" "1999" "2002" "1989" "1993" "0199" "2013" "2014" "1982" "1981" "0997"
+# [37] "1980" "1977" "2017" "2199" "2015" "2016" "1195" "2018" "1013" "0216" "2048" "2042"
+# [49] "2019" "2022" "2055" "2020" "2021" ""
+
+# buscar valores esquisitos para verificar se tem salvação ou remover as linhas
+IBAMA.verif <- IBAMAaut.bd %>% dplyr::filter(Ano %in% c("0199","0997","2199","1195","0216","1013","2048","2042","2055")) %>% 
+  inner_join(IBAMAaut, by = "NUM_AUTO_INFRACAO")
+
+
+#IBAMA.verif.simpl <- IBAMA.verif %>% dplyr::select(
+#  NUM_AUTO_INFRACAO, DAT_HORA_AUTO_INFRACAO.x, DAT_HORA, Ano, DAT_LANCAMENTO, #DAT_ULT_ALTERACAO
+#)
+
+#SALVANDO UMA CÓPIA DOS REGISTROS ALTERADOS (antes de recarregar a planilha)
+#IBAMA.verif %>% fwrite("IBAMA_registros_alterados_correcao_ano_20220903.csv")
+
+# consultando os registros que possuem o ano com erro
+#IBAMAaut.bd %>% dplyr::filter(NUM_AUTO_INFRACAO == 117454)
+
+# OBTÉM O ÍNDICE PARA O NUM_AUTO_INFRACAO IGUAL A 'XXXXXX'
+IBAMA.alt <- which(IBAMAaut.bd$NUM_AUTO_INFRACAO %in%
+                     c(117454,
+                       210202,
+                       130419,
+                       91765,
+                       603809,
+                       9054741,
+                       9060819,
+                       9060829,
+                       9060830,
+                       9060833,
+                       9060835,
+                       9060836,
+                       9060839,
+                       9060840,
+                       9060841,
+                       9070510,
+                       9106273)) 
+
+# REGISTROS COM ERRO ALTERADOS NO EXCEL!
+
+
+# Inserindo um número de NUM_AUTO_INFRACAO nos registros que não possuem número
+# consultando registros
+IBAMAaut.bd %>% dplyr::filter(is.na(NUM_AUTO_INFRACAO))
+
+#alterando registros que não possuiam valor:
+IBAMAaut.bd$NUM_AUTO_INFRACAO[which(is.na(IBAMAaut.bd$NUM_AUTO_INFRACAO))] <- -1
+
+
+
+
+## SUMARIZANDO VALORES
+
+### sumarizar dados por ano e estado, considerando algumas das categorias talvez
+
+## INFRACAO_AREA = Desmatamento
+## CLASSIFICACAO_AREA = RESERVA LEGAL, ...
+## COD_INFRACAO - descobrir o que é cada um
+## TIPO_INFRACAO = Penalidade pecuniária - Flora, Ecossistema...
+
+## Somar áreas (por categorias de interesse)? (QTD_AREA)
+### muitos missing values
+
+# sumarizando por ano e estado ('valores totais gerais')
+IBAMAaut.summ.total <- IBAMAaut.bd %>% 
+  dplyr::group_by(UF, Ano) %>% 
+  dplyr::summarise(across(
+    names(.)[1], # apenas colunas de interesse
+    list(
+  n = ~sum(!is.na(.x))
+  )
+  )
+)
+
+# salvando o arquivo:
+IBAMAaut.summ.total %>% fwrite("IBAMA_aut_summ_total_estado_ano_20220903.csv")
+
+
+
+
+# sumarizando por ano, estado e INFRACAO_AREA
+IBAMAaut.summ.infracaoArea <- IBAMAaut.bd %>% 
+  dplyr::group_by(UF, Ano, INFRACAO_AREA) %>% 
+  dplyr::summarise(across(
+    names(.)[1], # apenas colunas de interesse
+    list(
+  n = ~sum(!is.na(.x))
+  )
+  )
+)
+
+# salvando o arquivo:
+IBAMAaut.summ.infracaoArea %>% fwrite("IBAMA_aut_summ_estado_ano_infracaoArea_20220903.csv")
+
+
+# sumarizando por ano, estado e TIPO_INFRACAO
+
+unique(IBAMAaut.bd$TIPO_INFRACAO)
+
+IBAMAaut.summ.tipoInfracao <- IBAMAaut.bd %>% 
+  dplyr::group_by(UF, Ano, TIPO_INFRACAO) %>% 
+  dplyr::summarise(across(
+    names(.)[1], # apenas colunas de interesse
+    list(
+  n = ~sum(!is.na(.x))
+  )
+  )
+)
+
+# salvando o arquivo:
+IBAMAaut.summ.tipoInfracao %>% fwrite("IBAMA_aut_summ_estado_ano_tipoInfracao_20220903.csv")
+
+
+### dcast no arquivo total
+IBAMAaut.summ.total.wide <- IBAMAaut.summ.total[-1,] %>% # remove a 1a linha, ñ tem ano e est.
+  data.table::dcast(
+  formula = UF ~ Ano, # coluna 'var' com as variáveis e 'stat' com as estatis
+  value.var = "NUM_AUTO_INFRACAO_n" # coluna com os valores a serem utilizados
+)
+
+# salvando o arquivo:
+IBAMAaut.summ.total.wide %>% fwrite("IBAMA_aut_summ_total_estado_ano_wide_20220903.csv")
+
+### POSSÍVEL FILTRO DE CATEGORIAS ###
+
+### Filtrando os tipos de infrações (apenas as relacionadas com 'desmatamento' de alguma forma)
+IBAMAaut.bd.filter <- IBAMAaut.bd %>% dplyr::filter(
+  TIPO_INFRACAO %in% c(
+    "Penalidade pecuniária - Flora",
+    "Penalidade pecuniária - Controle ambiental",
+    "Penalidade pecuniária - Ecossistema" ,
+    "Penalidade pecuniária - Cadastro Técnico Federal",
+    "Penalidade pecuniária - Unidades de conservação",
+    "Penalidade pecuniária - Org. Gen. Modific. e Biopirataria",
+    "Unidade de Conservação",
+    "Flora",
+    "Cadastro Técnico Federal",
+    "Qualidade ambiental",
+    "Administração Ambiental",
+    "Licenciamento",
+    "Controle Ambiental",
+    "Org. Gen. Modific. e Biopirataria"  
+  )
+)
+
+
+
+
+
+```
+
