@@ -1,0 +1,553 @@
+---
+title: "EDA_Summary_Stat"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+### DEF -Sumário global - Salva um arquivo no diretório base
+```{r}
+
+class(def_data)
+# está como row-wise data frame! tem que desagrupar
+
+def.global.summ <- def_data %>% dplyr::ungroup() %>% 
+  dplyr::summarise(across(
+    names(.)[4:26], # apenas colunas de interesse
+    #all_of(numeric_columns),
+    list( 
+      COUNT = ~sum(!is.na(.x)), #<<<<<<<###<<<<< PARA NÃO CONTAR NA'S!!!!!
+      MIN = ~min(.x, na.rm = TRUE),
+      MAX = ~max(.x, na.rm = TRUE),
+      MEAN = ~mean(.x, na.rm = TRUE),
+      SD = ~sd(.x, na.rm = TRUE),
+      CV = ~ raster::cv(.x, na.rm = TRUE)/100, # coef. de variação do pkg raster (retorna pc)
+      Q1 = ~quantile(.x, na.rm = TRUE, probs = 0.25), #default é o tipo 7 de cálculo
+      MEDIAN = ~median(.x, na.rm = TRUE),
+      Q3 = ~quantile(.x, na.rm = TRUE, probs = 0.75)
+      ),
+    .names = "{.fn}_{.col}"
+  ))
+
+
+class(def.global.summ)
+
+
+# arrumando a tabela pra ficar legível
+# transpondo a tabela
+def.global.summ <- transpose(def.global.summ,
+                                    keep.names = "Stat_var"
+                                    )
+
+# criando uma coluna com o nome da estatística
+def.global.summ$stat <- str_split(
+  string = def.global.summ$Stat_var, # strings
+  pattern =  "_", # caracter que dividirá o string
+  n = 2,  # divide em 2 pedaços apenas
+  simplify = TRUE # para retornar uma matriz
+            )[,1] # selecionando apenas a primeira coluna da matriz
+
+# criando uma coluna com o nome da variável
+def.global.summ$var <- str_split(
+  string = def.global.summ$Stat_var,
+  pattern =  "_",
+  n =2, # divide em 2 pedaços
+  simplify = TRUE
+)[,2]
+
+# arrumando o nome da coluna de valores (V1 --> Value):
+colnames(def.global.summ)[2] <- "Value"
+
+# salva uma cópia no formato long (antes do dcast)
+def.global.summ_long <- def.global.summ
+
+# montando uma tabela com cada estatística nas colunas e variáveis nas linhas
+def.global.summ <- def.global.summ %>% 
+  dplyr::select(var, stat, Value) %>% #selecionando colunas
+  data.table::dcast(
+  formula = var ~ stat, # coluna 'var' com a variáveis e 'stat' com as estatis
+  value.var = "Value" # coluna com os valores a serem utilizados
+)
+
+def.global.summ <- def.global.summ %>% dplyr::select(
+  var, COUNT, MEAN, SD, CV, MIN, Q1, MEDIAN, Q3, MAX
+)
+
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+def.global.summ %>% fwrite(paste0(saveFolder,
+                  "/Statistics_summary_def_global_",
+                  Sys.Date(),
+                  ".csv"
+))
+
+  
+  
+```
+
+### DEF - Sumário por ESTADO
+```{r}
+
+# def_data[,26] # conferindo a última coluna
+#names(def_data)[26]
+
+def.state.summ <- def_data %>% dplyr::ungroup() %>% 
+  dplyr::group_by(Estado) %>%  ### utilizando across para 'extrair' nome
+  dplyr::summarise(across(
+    names(.)[4:26], # apenas colunas de interesse
+    list( 
+      COUNT = ~sum(!is.na(.x)), #<<<<<<<###<<<<< PARA NÃO CONTAR NA'S!!!!!
+      MIN = ~min(.x, na.rm = TRUE),
+      MAX = ~max(.x, na.rm = TRUE),
+      MEAN = ~mean(.x, na.rm = TRUE),
+      SD = ~sd(.x, na.rm = TRUE),
+      CV = ~ raster::cv(.x, na.rm = TRUE)/100, # coef. de variação do pkg raster
+      Q1 = ~quantile(.x, na.rm = TRUE, probs = 0.25), #default é o tipo 7 de cálculo
+      MEDIAN = ~median(.x, na.rm = TRUE),
+      Q3 = ~quantile(.x, na.rm = TRUE, probs = 0.75)
+                ),
+    .names = "{.fn}_{.col}"
+  ))
+
+# transpondo a tabela para poder gerar colunas de var e stat
+def.state.summ_t <- transpose(def.state.summ,
+                                    keep.names = "Stat_var",
+                                    make.names = "Estado" # novo nome cols
+                                    )
+
+# criando uma coluna com o nome do 'tipo' de intervalo ("def")
+#def.state.summ_t$type <- "def"
+
+# criando uma coluna com o nome da estatística
+def.state.summ_t$stat <- str_split(
+  string = def.state.summ_t$Stat_var, # strings
+  pattern =  "_", # caracter que dividirá o string
+  n = 2,  # divide em 2 pedaços apenas
+  simplify = TRUE # para retornar uma matriz
+            )[,1] # selecionando apenas a primeira coluna da matriz
+
+# criando uma coluna com o nome da variável
+def.state.summ_t$var <- str_split(
+  string = def.state.summ_t$Stat_var, # strings
+  pattern =  "_", # caracter que dividirá o string
+  n = 2,  # divide em 2 pedaços apenas
+  simplify = TRUE # para retornar uma matriz
+            )[,2] # selecionando apenas a primeira coluna da matriz
+
+# arrumando o nome da coluna de valores (V1 --> "Unknown"):
+# não é necessário se só houver os domínios de interesse
+#colnames(def.state.summ_t)[2] <- "Unknown"
+
+def.state.summ_t <- def.state.summ_t %>% dplyr::select(
+ Stat_var, stat, var, everything())
+
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+def.state.summ_t %>% fwrite(paste0(saveFolder,
+                  "/Statistics_summary_def_states_",
+                  Sys.Date(),
+                  ".csv"
+))
+
+
+```
+
+### DEF - Sumário por ESTADO - formato long
+```{r}
+##### WIDE TO LONG --> MELT
+# montando uma tabela long com os campos de "Domínio", "Var", "Tipo", "Stat"
+
+def.state.summ_t_long <- def.state.summ_t %>% 
+  dplyr::select(Stat_var, var, stat, everything()) %>% #reordenando colunas
+  data.table::melt(
+  id.vars = c(names(.)[1:3]), # mantém as colunas categóricas
+  na.rm = FALSE, #mantém valores NA no long
+  variable.name = "Estado" # nome da nova coluna 'melted'
+) # fica implícito que todas as outras colunas devem ser 'melted' (measure.vars)
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+def.state.summ_t_long %>% fwrite(paste0(saveFolder,
+                  "/Statistics_summary_def_state_LONG_",
+                  Sys.Date(),
+                  ".csv"
+))
+```
+
+
+
+### Ordem que as estatística devem aparecer nas tabela
+```{r}
+# vetor com a ordem das estatísticas
+(stats_order <- factor(c("COUNT", 
+                "MEAN", 
+                "SD",
+                "CV",
+                "MIN",
+                "Q1",
+                "MEDIAN",
+                "Q3",
+                "MAX"
+)))
+
+# transforma em factor com os levels na mesma ordem do vetor - para os plots
+stats_order <- factor(stats_order, levels = stats_order)
+```
+
+### Organizando a ordem em que os gráficos aparecerão (stats_order --> factor levels)
+```{r}
+# testando o resultado da transformação em factor com o vetor da ordem
+#factor(def.state.summ_t_long$stat, levels = stats_order)
+
+# aplicando a modificação na coluna stat e devolvendo para o data frame
+def.state.summ_t_long <- within(def.state.summ_t_long,
+                                      stat <- factor(stat, levels = stats_order)
+                                      )
+
+```
+
+
+
+
+### Bar-plot das estatísticas dos sumários globais (barras) para TODOS ELEMENTOS
+#### Para "total_level1" apenas
+```{r}
+
+options(scipen = 99999)
+
+# criar a função que será usada a seguir - recebe uma variável
+# utilizar o comando plot dentro para que retorne o gráfico e não a lista de parâmetros
+# ggplot com as estatísticas Assay x Comp para cada um dos elementos
+
+#bar_plot <- function() {
+#  plot(
+
+    def.state.summ_t_long %>% 
+    dplyr::filter(var == "Total_level1") %>% 
+    ggplot(aes(x = Estado, y = value, fill = Estado)) +
+    geom_bar( stat = "identity") +
+    facet_wrap(~ stat,
+               scales = "free" #
+               #nrow = 2
+               ) +
+    #geom_text(aes(label=round(value,2)), 
+    #          position=position_dodge(width=0.9), 
+    #          vjust=1.3,
+    #          size = 0.2) +
+    #ggtitle(element) +
+    theme_bw(base_size = 5) + 
+      scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0),
+            strip.text.x = element_text(size = 8),
+            legend.text = element_text(size = 8),
+            legend.title = element_text(size = 10))
+ # )
+  
+  ggsave(filename = paste0(saveFolder,
+                  "/Assay_vs_Comp_bar_plot_global_basic_statistics_",
+                  element,
+                  "_",
+                  Sys.Date(),
+                  ".jpg"))
+#}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+# utilizar sapply, que 'varre' o vetor 'numeric_columns' mandando elemento por elemento para a função bar_plot()
+#sapply(numeric_columns, FUN = bar_plot)
+
+```
+
+### Bar-plot para as estatísticas dos sumários (1 a 1) por estado
+#### "Total_level1" apenas
+```{r}
+
+options(scipen = 99999)
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+# boxplots de todos os elementos (numeric_columns)
+for (i in stats_order) {
+  
+  def.state.summ_t_long %>% 
+    dplyr::filter(var == "Total_level1" & stat == i) %>% 
+    ggplot() +
+    geom_bar(aes_string(x = "Estado", y = "value", fill = "Estado"), 
+                 width = 0.7,
+             stat = "identity") +
+    #facet_wrap( ~ get(colDomains), scales = "free_x") +
+    scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+    theme_bw() +
+    #theme(legend.position = 'none') +
+    ggtitle(i)
+    # se quiser só não mostrar os outliers colocar outlier.shape = NA
+  
+   # salvando o arquivo
+  ggsave(filename = paste0(saveFolder,
+                           "/Def_barplot_stat_por_estado_",
+                           i, 
+                           "_",
+                           Sys.Date(),
+                           ".jpg"))
+}
+
+```
+
+
+### MUDAR LOCALIZAÇÃO DAS LINHAS CONFORME NECESSÁRIO
+### Boxplot POR ESTADO para Total_level1
+```{r}
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+#domain_boxplot <- function(element) {
+#  plot(
+    ggplot(data = def_data) +
+    geom_boxplot(mapping = aes(x =  Estado, 
+                               y = Total_level1, 
+                               fill = Estado)) +
+    scale_x_discrete(limits = rev) +
+    coord_flip() +
+      scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+      theme_bw()+
+    #xlab("Domains") +
+    ylab("Desmatamento total (ha)") #+
+    #labs(fill = "Estado")
+    #)
+  
+  ggsave(filename =
+           paste0(saveFolder,
+                  "/DEF_boxplot_por_Estado_Total_level1_",
+                  Sys.Date(),
+                  ".jpg"
+                  )
+           )
+#}
+
+# boxplot comum para todas as colunas numéricas
+#sapply(X = numeric_columns, FUN = domain_boxplot)
+
+```
+
+### Boxplot POR ESTADO para Total_level1 (REMOVENDO OUTLIERS E MUDANDO ESCALA)
+#### Não faz diferença para esses dados...
+```{r}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+
+#domain_boxplot_noOutliers <- function(element) {
+#  plot(
+    ggplot(data = def_data) +
+    geom_boxplot2(mapping = aes(x =  Estado, 
+                               y = Total_level1, 
+                               fill = Estado)) +
+    scale_x_discrete(limits = rev) +
+    coord_flip() +
+      scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+    #xlab("Domains") +
+    ylab("Dematamento total (ha)") #+
+    #labs(fill = "Estado")
+    #)
+  
+  ggsave(filename =
+           paste0(saveFolder,
+                  "/DEF_boxplot_por_estado_Total_level1_NO_OUTLIERS_",
+                  Sys.Date(),
+                  ".jpg"
+                  )
+           )
+#}
+
+# boxplot comum
+sapply(numeric_columns, domain_boxplot_noOutliers)
+
+```
+
+
+
+## Bar plot dos CVs (coeficientes de variação) para cada estado
+```{r}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+def.state.summ_t_long %>% dplyr::filter(stat == "CV") %>% 
+ggplot(aes_string(x = "Estado" , y = "value", fill = "Estado")) +
+  geom_bar(stat = "identity", width = 1) +
+  facet_wrap(~var,
+             scales = "free") +
+  theme_bw(base_size = 5)+
+  ggtitle("CV") +
+  theme(legend.position = 'none') +
+  geom_hline(yintercept = c(1),
+             color = "orange",
+             size = 0.7) +
+  geom_hline(yintercept = c(2),
+             color = "red",
+             size = 1) +
+  coord_flip()
+
+ggsave(filename = paste0(saveFolder,
+                           "/Def_CVs_por_estado_todos_niveis_",
+                         Sys.Date(),
+                         ".jpg"
+  ))
+
+```
+
+## Bar plot dos CVs (coeficientes de variação) para cada estado
+### Apenas para "Total_level1"
+```{r}
+
+# choose the folder where to save:
+saveFolder <- getwd()
+saveFolder <- svDialogs::dlg_dir()$res
+
+def.state.summ_t_long %>% dplyr::filter(stat == "CV" & var == "Total_level1") %>% 
+ggplot(aes_string(x = "Estado" , y = "value", fill = "Estado")) +
+  geom_bar(stat = "identity", width = 1) +
+  #facet_wrap(~var,
+  #           scales = "free") +
+  theme_bw(base_size = 10)+
+  ggtitle("C.V.") +
+  ylab("Coeficiente de Variação") +
+  theme(legend.position = 'none') +
+  geom_hline(yintercept = c(0.25),
+             color = "orange",
+             size = 0.7) +
+  geom_hline(yintercept = c(0.5),
+             color = "red",
+             size = 1) +
+  coord_flip()
+
+ggsave(filename = paste0(saveFolder,
+                           "/Def_CVs_por_estado_Total_level1_",
+                         Sys.Date(),
+                         ".jpg"
+  ))
+
+```
+
+
+
+## Séries temporais por estado (facet) para o total de área desmatada
+```{r}
+
+# se precisar
+# def_data_cluster_final <- def_data_cluster_final %>% mutate(Ano = as.numeric(Ano))
+
+def_data_cluster_final %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = Total_level1,
+                color = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 7,
+             nrow = 4) +
+  theme_bw() +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+  ylab("Total de área (ha) desmatada ") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0),
+        legend.position = 'none')
+
+
+```
+
+
+## Séries temporais por estado (facet) para o total de área desmatada
+### MODIFICAÇÕES FINAIS
+```{r}
+
+# se precisar
+# def_data_cluster_final <- def_data_cluster_final %>% mutate(Ano = as.numeric(Ano))
+
+db.hline.mean <- data.frame(Estado = unique(def_data_cluster_final$Estado))
+
+db.hline.mean <- inner_join(db.hline.mean, def.state.summ[,c("Estado", "MEAN_Total_level1")], by = "Estado")
+
+
+(def_data_cluster_final %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = Total_level1,
+                color = Estado),
+            size = 0.8) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 7,
+             nrow = 4) +
+  theme_bw(base_size = 6) +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+  ylab("Total de área (ha) desmatada ") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0),
+        strip.text = element_text(face = "bold"),
+        legend.position = 'none') +
+  geom_hline(data = db.hline.mean, aes(yintercept = MEAN_Total_level1))) %>% 
+  ggsave(filename = "Serie_def_desmatamento_total_com_medias_20221015.png", width = 2000, height = 1000, units = "px")
+
+
+```
+
+
+## Séries temporais de todos os estados (dados padronizados)
+```{r}
+
+# se precisar
+# def_data_cluster_final <- def_data_cluster_final %>% mutate(Ano = as.numeric(Ano))
+
+def_data_cluster_final %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = Total_level1_std,
+                color = Estado)) + 
+  theme_bw() +
+  scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+  ylab("Total de área (ha) desmatada ") +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0))
+
+
+```
+
+
+## Histogramas dos valores de desmatamento por estado
+```{r}
+options(scipen = 99999)
+
+def_data_cluster_final %>% 
+    ggplot() +  
+    geom_histogram(
+      aes(x = Total_level1, fill = Estado),
+      bins = 10, # pela lei de Sturges, com 33 observações seriam 6 bins
+      color = "black") +
+    facet_wrap(~ Estado, scales = "free") +
+    #ggtitle(Estado) +
+      theme_bw(base_size = 7) + # modifica o tamanho padrão dos textos
+        scale_x_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+      theme(axis.text.x = element_text(angle = 90, vjust = 0),
+            strip.text.x = element_text(size = 8),
+            legend.position = 'none') +
+  xlab("Área de desmatamento (ha)")+
+  ylab("Contagem")
+
+```
+
+
