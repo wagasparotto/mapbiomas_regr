@@ -1,0 +1,1526 @@
+---
+title: "MBA_DSA_TCC_Data_Wrangling"
+author: "WAG"
+date: "5/24/2022"
+output: html_notebook
+runtime: shiny
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+
+# str(knitr::opts_chunk$get())
+
+options(scipen = 10) # a partir de quando mostrar em notação científica
+```
+
+
+#2nd test (25/05/2022)
+
+# Global variables (STATES - NAME, ACRONYM/INITIALS AND REGION)
+
+```{r}
+# Importa o nome dos estados (ordem alfabética) com as respectivas siglas:
+statesBR <- fread("Estados_BR.csv",encoding = "Latin-1")
+summary(statesBR)
+
+# cria um objeto apenas com as siglas dos estados:
+siglas <- statesBR[,2] # a ordem das siglas é a mesma da alfabética dos nomes!
+summary(siglas)
+
+# regiões do Brasil
+regions <- unique(statesBR[,3])
+
+# cria um objeto com o número de registros de siglas (número de estados) 
+## deixado como uma variável para caso seja necessário fazer testes com menos estados
+nStates <- nrow(siglas)
+```
+
+# COBERTURA
+
+## Preparing values for iterative import of tables:
+
+```{r}
+
+# mudar o nome fixo para 'set' de tabelas (cobertura, desmatamento, etc.)
+cover_fixed_name <- "_MapBiomas_Cobertura_Anual_SerieHist_20220524.csv"
+
+# vetor com todos os nomes dos arquivos para essa base de 'nome fixo':
+cover_file_names <- NULL
+for (i in 1:nStates) {
+  cover_file_names[i] <- paste0(siglas[i],cover_fixed_name)
+}
+rm(i) # remove o objeto 'i' criado no 'for'
+
+cover_file_names
+
+```
+
+### Importing, transposing, creating column, and appending data from all tables (coverage):
+
+```{r}
+
+#escolher de onde ler os arquivos
+cover_file_path <- svDialogs::dlg_dir()$res
+
+#escolher onde salvar os resultados transpostos
+cover_save_folder <- svDialogs::dlg_dir()$res # se não usar o $res muda o wd!
+
+total_table <- NULL # tabela auxiliar para o 'for'
+
+for (i in 1:nStates) {
+    
+  state_table <- fread(paste0(cover_file_path,"/",cover_file_names[i]), #lista com o nome dos arquivos
+                      encoding = "UTF-8",
+                      header = TRUE)
+  
+  # função do pacote data.table que já tem essas opções:
+  state_table_t <- state_table %>% transpose(
+    make.names = "Classe", #converte a primeira coluna em headers
+    keep.names = "Ano" #mantém os cabeçalhos de antes de transpor como a 1a coluna.
+    )
+  # talvez os nomes tenham que ser alterados para cada tipo de tabela... 
+  # criar uma função que recebe esses nomes por exemplo?
+  
+  # Cria uma coluna com o nome do estado (automatizar para pegar as 2 primeiras letras do nome do arquivo)
+  state_table_t$Estado <- siglas[i]
+  
+  # cria um objeto com outro nome com base nessa tabela transposta
+  ## passo para automatizar o procedimento para todas as tabelas dos estados
+  
+  #assign(paste0(siglas[i],"_cov_t"), state_table_t)
+  
+  # salva arquivos para cada uma das sigles na pasta escolhida anteriormente
+  
+  #state_table_t %>% fwrite(paste0(cover_save_folder, 
+  #                                "/", 
+  #                                siglas[i],
+  #                                "_cov_t.csv"))
+  
+  total_table <-  total_table %>% rbind(state_table_t,
+                            use.names = TRUE)
+}
+
+# usando o select do dplyr com 'todo o restante' e renomeando a tabela
+cover_data <- total_table %>% select(Estado, everything())
+head(cover_data)
+
+## Bringing 'state' column to the first position
+cover_data %>% fwrite(paste0(cover_save_folder, 
+                                  "/", 
+                                  "cover_data_wide.csv"))
+
+columns_level1 <- c("1. Floresta",
+                    "2. Formação Natural não Florestal",
+                    "3. Agropecuário",
+                    "4. Área Não Vegetada",
+                    "5. Água",
+                    "6. Não Observado")
+
+```
+
+# BASIC 'TEST EDA PLOTS'
+
+#### Points plot with for AM state for '1. Floresta'
+
+```{r}
+cover_data %>% filter(Estado == "AM") %>% ggplot()+
+  geom_point(aes(x = Ano, y = `1. Floresta`, colour = Estado), na.rm = TRUE) +
+  theme(axis.text.x = element_text(angle = 90))
+```
+
+#### Bar plot with 'facet_wrap' for all states for '1. Floresta'
+
+```{r}
+total_table %>% ggplot()+
+  geom_bar(aes(x = Ano, y = `1. Floresta`, fill = Estado), na.rm = TRUE, stat = "identity", colour = "black") +
+  facet_wrap(~Estado, scales = "free_y") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90)) 
+# + coord_flip()
+  
+```
+
+#### Line plot with all states for '1. Floresta'
+
+```{r}
+year_as_numeric <- cover_data %>% mutate(Ano = as.numeric(Ano))
+
+cover_data %>% mutate(Ano = as.numeric(Ano)) %>% 
+  ggplot()+
+  geom_line(aes(x = Ano, y = `1. Floresta`, colour = Estado), na.rm = TRUE) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+  # + coord_flip()
+```
+
+# DESMATAMENTO
+
+## Setting parameters to read tables of 'DESMATAMENTO':
+
+```{r}
+# mudar o nome fixo para 'set' de tabelas (cobertura, desmatamento, etc.)
+def_fixed_name <- "_MapBiomas_Desmatamento_Anual.csv"
+
+# vetor com todos os nomes dos arquivos para essa base de 'nome fixo':
+def_file_names <- NULL
+for (i in 1:nStates) {
+  def_file_names[i] <- paste0(siglas[i],def_fixed_name)
+}
+rm(i) # remove o objeto 'i' criado no 'for'
+
+def_file_names
+
+```
+
+### Reading, modifying and saving the tables:
+
+```{r}
+
+#escolher de onde ler os arquivos
+def_file_path <- svDialogs::dlg_dir()$res
+
+#escolher onde salvar os resultados transpostos
+def_save_folder <- svDialogs::dlg_dir()$res # se não usar o $res muda o wd!
+
+total_table <- NULL # zera o objeto "total_table" # tabela auxiliar
+
+for (i in 1:nStates) {
+  # importação da tabela como o 'i'-ésimo nome:  
+  state_table <- fread(paste0(def_file_path,"/",def_file_names[i]), #lista com o nome dos arquivos
+                      encoding = "UTF-8",
+                      header = TRUE)
+  
+  # função do pacote data.table que já tem essas opções:
+  state_table_t <- state_table %>% transpose(
+    make.names = "Classe", #converte a primeira coluna em headers
+    keep.names = "Ano" #mantém os cabeçalhos de antes de transpor como a 1a coluna.
+    )
+  # talvez os nomes tenham que ser alterados para cada tipo de tabela... 
+  # criar uma função que recebe esses nomes por exemplo?
+  
+  # Cria uma coluna com o nome do estado (automatizar para pegar as 2 primeiras letras do nome do arquivo)
+  state_table_t$Estado <- siglas[i]
+  
+  # cria um objeto com outro nome com base nessa tabela transposta
+  ## passo para automatizar o procedimento para todas as tabelas dos estados
+  
+  #assign(paste0(siglas[i],"_def_t"), state_table_t)
+  
+  # salva arquivos para cada uma das sigles na pasta escolhida anteriormente
+  
+  #state_table_t %>% fwrite(paste0(def_save_folder, 
+  #                                "/", 
+  #                                siglas[i],
+  #                                "_def_t.csv"))
+  
+  total_table <-  total_table %>% rbind(state_table_t,
+                            use.names = TRUE)
+}
+
+# usando o select do dplyr com 'todo o restante'
+def_data <- total_table %>% select(Estado, everything())
+head(def_data)
+
+def_data %>% fwrite(paste0(def_save_folder, 
+                                  "/", 
+                                  "deforestation_data_wide.csv"))
+
+rm(i)
+```
+
+# REGENERAÇÃO
+
+## Setting parameters to read tables of 'REGENERAÇÃO':
+
+```{r}
+# mudar o nome fixo para 'set' de tabelas (cobertura, desmatamento, etc.)
+reg_fixed_name <- "_MapBiomas_Regeneracao_Anual_20220524.csv"
+
+# vetor com todos os nomes dos arquivos para essa base de 'nome fixo':
+reg_file_names <- NULL
+for (i in 1:nStates) {
+  reg_file_names[i] <- paste0(siglas[i],reg_fixed_name)
+}
+rm(i) # remove o objeto 'i' criado no 'for'
+
+reg_file_names
+
+```
+
+### Reading, modifying and saving the tables:
+
+```{r}
+
+#escolher de onde ler os arquivos
+reg_file_path <- svDialogs::dlg_dir()$res
+
+#escolher onde salvar os resultados transpostos
+reg_save_folder <- svDialogs::dlg_dir()$res # se não usar o $res muda o wd!
+
+total_table <- NULL # zera o objeto "total_table" # tabela auxiliar
+
+for (i in 1:nStates) {
+  # importação da tabela como o 'i'-ésimo nome:  
+  state_table <- fread(paste0(reg_file_path,"/",reg_file_names[i]), #lista com o nome dos arquivos
+                      encoding = "UTF-8",
+                      header = TRUE)
+  
+  # função do pacote data.table que já tem essas opções:
+  state_table_t <- state_table %>% transpose(
+    make.names = "Classe", #converte a primeira coluna em headers
+    keep.names = "Ano" #mantém os cabeçalhos de antes de transpor como a 1a coluna.
+    )
+  # talvez os nomes tenham que ser alterados para cada tipo de tabela... 
+  # criar uma função que recebe esses nomes por exemplo?
+  
+  # Cria uma coluna com o nome do estado (automatizar para pegar as 2 primeiras letras do nome do arquivo)
+  state_table_t$Estado <- siglas[i]
+  
+  # cria um objeto com outro nome com base nessa tabela transposta
+  ## passo para automatizar o procedimento para todas as tabelas dos estados
+  
+  #assign(paste0(siglas[i],"_reg_t"), state_table_t)
+  
+  # salva arquivos para cada uma das sigles na pasta escolhida anteriormente
+  
+  state_table_t %>% fwrite(paste0(reg_save_folder, 
+                                  "/", 
+                                  siglas[i],
+                                  "_reg_t.csv"))
+  
+  total_table <-  total_table %>% rbind(state_table_t,
+                            use.names = TRUE)
+}
+rm(i)
+
+# usando o select do dplyr com 'todo o restante'
+reg_data <- total_table %>% select(Estado, everything())
+head(def_data)
+
+reg_data %>% fwrite(paste0(reg_save_folder, 
+                                  "/", 
+                                  "regeneration_data_wide.csv"))
+
+
+```
+
+# MINERAÇÃO
+
+## Setting parameters to read tables of 'MINERAÇÃO' (Areas):
+
+```{r}
+# mudar o nome fixo para 'set' de tabelas (cobertura, desmatamento, etc.)
+min_fixed_name <- "_MapBiomas_Mineracao_Anual_areaClasse_20220525.csv"
+
+# vetor com todos os nomes dos arquivos para essa base de 'nome fixo':
+min_file_names <- NULL
+for (i in 1:nStates) {
+  min_file_names[i] <- paste0(siglas[i],min_fixed_name)
+}
+rm(i) # remove o objeto 'i' criado no 'for'
+
+min_file_names
+
+```
+
+### Reading, modifying and saving the tables:
+
+```{r}
+
+#escolher de onde ler os arquivos
+min_file_path <- svDialogs::dlg_dir()$res
+
+#escolher onde salvar os resultados transpostos
+min_save_folder <- svDialogs::dlg_dir()$res # se não usar o $res muda o wd!
+
+total_table <- NULL # zera o objeto "total_table" # tabela auxiliar
+
+for (i in 1:nStates) {
+  # importação da tabela como o 'i'-ésimo nome:  
+  state_table <- fread(paste0(min_file_path,"/",min_file_names[i]), #lista com o nome dos arquivos
+                      encoding = "UTF-8",
+                      header = TRUE)
+  
+  # função do pacote data.table que já tem essas opções:
+  state_table_t <- state_table %>% transpose(
+    make.names = "Classe", #converte a primeira coluna em headers
+    keep.names = "Ano" #mantém os cabeçalhos de antes de transpor como a 1a coluna.
+    )
+  # talvez os nomes tenham que ser alterados para cada tipo de tabela... 
+  # criar uma função que recebe esses nomes por exemplo?
+  
+  # Cria uma coluna com o nome do estado (automatizar para pegar as 2 primeiras letras do nome do arquivo)
+  state_table_t$Estado <- siglas[i]
+  
+  # cria um objeto com outro nome com base nessa tabela transposta
+  ## passo para automatizar o procedimento para todas as tabelas dos estados
+  
+  #assign(paste0(siglas[i],"_reg_t"), state_table_t)
+  
+  # salva arquivos para cada uma das sigles na pasta escolhida anteriormente
+  
+  state_table_t %>% fwrite(paste0(min_save_folder, 
+                                  "/", 
+                                  siglas[i],
+                                  "_min_t.csv"))
+  
+  total_table <-  total_table %>% rbind(state_table_t,
+                            use.names = TRUE)
+}
+rm(i)
+
+# usando o select do dplyr com 'todo o restante'
+min_data <- total_table %>% select(Estado, everything())
+head(def_data)
+
+min_data %>% fwrite(paste0(min_save_folder, 
+                                  "/", 
+                                  "mining_data_wide.csv"))
+
+```
+
+# JOINS
+
+## Preparing to join: 'unique key':
+```{r}
+# cria uma coluna com uma 'chave única' composta pelo Estado+Ano
+cover_data <- cover_data %>% 
+  mutate(key = paste0(Estado,"_",Ano)) %>% 
+  select(key,everything())
+
+def_data <- def_data %>% 
+  mutate(key = paste0(Estado,"_",Ano)) %>% 
+  select(key,everything())
+
+reg_data <- reg_data %>% 
+  mutate(key = paste0(Estado,"_",Ano)) %>% 
+  select(key,everything())
+
+min_data <- min_data %>% 
+  mutate(key = paste0(Estado,"_",Ano)) %>% 
+  select(key,everything())
+
+```
+
+## Join (inner --\> only observations in both tables)
+```{r}
+# inner join utilizando a coluna 'key' como base
+cov_def_join <- inner_join(cover_data, def_data, by = "key")
+
+### anit-join to check what was left behind in the 'cover' table
+cov_antiJoin <- anti_join(cover_data, def_data, by = "key")
+
+### anit-join to check what was left behind in the 'def' table
+def_antiJoin <- anti_join(def_data, cover_data, by = "key")
+
+#salvando a tabela unificada
+cov_def_join %>% fwrite(paste0(svDialogs::dlg_dir()$res, 
+                                  "/", 
+                                  "cover_def_inner_join.csv"))
+
+# junta as 4 tabelas - apenas os registros que existem em ambas
+model_data <- inner_join(cover_data, def_data, by = "key") %>% 
+  inner_join(reg_data, by = "key") %>% 
+  inner_join(min_data, by = "key")
+
+summary(model_data)
+
+```
+
+### Selecting main columns
+```{r}
+# criar um objeto com o nome das colunas (headers) da tabela unificada
+col_names <- colnames(model_data)
+col_names
+
+### testes com regex
+# str_extract(col_names, "^1") #REGEX
+# str_detect(col_names, "^1") # começa com 1
+# str_detect(col_names, "^[0-9]") # começa com qualquer número
+# str_detect(col_names, "^[0-9].") # começa com qualquer número seguido de ponto
+
+level_0 <- str_detect(col_names, "^[0-9].[:space:]") # começa com número seguido de ponto e espaço
+
+main_cols <- col_names[level_0]
+main_cols
+
+# Seleciona todas as colunas listadas em 'select' (todas as do vetor 'main_cols')
+# Renomeia as colunas Estado.x e Ano.x
+main_model_data <- model_data %>% select(key, Estado = Estado.x, Ano = Ano.x, all_of(main_cols))
+
+```
+
+# Plot for Amazon state - connected values in a scatter plot ('path')
+```{r}
+#conecta as linha
+main_model_data %>% filter(Estado == "AM") %>% ggplot() +
+  geom_path(aes(x = get(main_cols[7]), 
+                y = get(main_cols[11])), 
+            na.rm=TRUE) +
+  geom_point(aes(x = get(main_cols[7]), 
+                 y = get(main_cols[11]), 
+                 colour = Ano),
+             size = 2.5,
+             na.rm=TRUE) +
+  xlab(main_cols[7]) +
+  ylab(main_cols[11]) +
+  theme_dark()
+
+```
+
+# TRANSIÇÃO (COBERTURA)
+
+## Setting parameters to read tables of 'MINERAÇÃO' (Areas):
+```{r}
+# mudar o nome fixo para 'set' de tabelas (cobertura, desmatamento, etc.)
+tra_fixed_name <- "_Mapbiomas_col6_area_transition.csv"
+
+# vetor com todos os nomes dos arquivos para essa base de 'nome fixo':
+tra_file_names <- NULL
+for (i in 1:nStates) {
+  tra_file_names[i] <- paste0(siglas[i],tra_fixed_name)
+}
+rm(i) # remove o objeto 'i' criado no 'for'
+
+tra_file_names
+
+```
+
+### Reading, modifying and saving the tables:
+```{r}
+
+#escolher de onde ler os arquivos
+tra_file_path <- svDialogs::dlg_dir()$res
+
+#escolher onde salvar os resultados transpostos
+tra_save_folder <- svDialogs::dlg_dir()$res # se não usar o $res muda o wd!
+
+total_table <- NULL # zera o objeto "total_table" # tabela auxiliar
+
+for (i in 1:nStates) {
+  # importação da tabela como o 'i'-ésimo nome:  
+  state_table <- fread(paste0(tra_file_path,"/",tra_file_names[i]), #lista com o nome dos arquivos
+                      encoding = "UTF-8",
+                      header = TRUE)
+  
+  # Cria uma coluna com o nome do estado (automatizar para pegar as 2 primeiras letras do nome do arquivo)
+  state_table$Estado <- siglas[i]
+  
+  # cria um objeto com outro nome com base nessa tabela transposta
+  ## passo para automatizar o procedimento para todas as tabelas dos estados
+  
+  #assign(paste0(siglas[i],"_reg_t"), state_table_t)
+  
+  # salva arquivos para cada uma das sigles na pasta escolhida anteriormente
+  
+  state_table %>% fwrite(paste0(tra_save_folder, 
+                                  "/", 
+                                  siglas[i],
+                                  "_tra.csv"))
+  
+  total_table <-  total_table %>% rbind(state_table,
+                            use.names = TRUE)
+}
+rm(i)
+
+# usando o select do dplyr com 'todo o restante'
+tra_data <- total_table %>% select(Estado, everything())
+head(def_data)
+
+tra_data %>% fwrite(paste0(tra_save_folder, 
+                                  "/", 
+                                  "transition_data_wide.csv"))
+
+```
+
+## Organizing, creating classes and removing unecessary columns
+```{r}
+
+names(tra_data) # cabeçalho com os nomes das colunas
+
+# seleciona e reorganiza as colunas, removendo '.geo' e 'system:index':
+tra_data_lookup <- tra_data %>% select(Estado, band, class, from_class, to_class, area)
+
+# Cria novas colunas
+## Ano_from e Ano_to são o início e fim da 'observação'
+## Dif_anos é a diferença numérica de anos
+## Tempo é uma categoria definida pelo Mapbiomas - criada com testes lógicos.
+tra_data_lookup <- tra_data_lookup %>% mutate(
+  Ano_from = as.numeric(str_sub(band, -9, -6)), # seleciona caracteres a partir do final
+  Ano_to = as.numeric(str_sub(band, -4, -1)),
+  Dif_anos = Ano_to - Ano_from, # variável com a diferença de anos
+  Tempo = case_when(Dif_anos == 1 ~ "Anual",
+                    Dif_anos %% 5 == 0 ~ "Quinquenal", # operador de resto
+                    Dif_anos %% 10 == 0 ~ "Decenal",
+                    (Dif_anos %% 5 != 0 & Dif_anos != 1) ~ "Especial",)
+                 )
+
+# realizando algumas conferências para conseguir chegar no resultado...
+tra_data_lookup %>% filter(Dif_anos %% 5 != 0 & Dif_anos != 1)
+
+tra_data_lookup %>% filter(Dif_anos == "Especial")
+
+teste <- tra_data_lookup[Dif_anos %% 5 != 0 & Dif_anos != 1,]
+teste2 <- tra_data_lookup[is.na(Tempo),]
+teste3 <- tra_data_lookup %>%  distinct(.keep_all = TRUE) # testando se há linhas repetidas (parece have 'tempos' repetidos na lista do Earth Engine - ex: 1990-2000 tanto no 'decenal' como no especial)
+teste4 <- tra_data_lookup %>%  distinct()
+
+rm(teste)
+rm(teste2)
+rm(teste3)
+rm(teste4)
+
+```
+
+## Importint the legend table with class names
+```{r}
+# Tabela oficial da Coleção 6 do Mapbiomas (https://mapbiomas.org/codigos-de-legenda)
+# https://mapbiomas-br-site.s3.amazonaws.com/downloads/Colecction%206/Cod_Class_legenda_Col6_MapBiomas_BR.pdf)
+
+#escolher o arquivo:
+legenda <- fread(choose.files(), 
+                      encoding = "Latin-1",
+                      header = TRUE)
+names(legenda)
+
+legenda
+
+```
+
+## Extracting the 'from' and 'to' classes id from column 'class'
+```{r}
+# CONTINUANDO... criação de colunas que identifiquem de qual classe para qual outra foi a mudança
+
+str(tra_data_lookup) # coluna 'class' está como integer
+# class
+# 0 = Non-observed --> non-observed
+# X = Non-observed --> Classe de 1 número
+# XX = Non-observed --> Classe de 2 números
+# X00 = Classe de 1 número --> non-observed
+# XXX = Classe de 1 número --> alguma classe de 1 (acrescenta 0) ou 2 números
+# XX00 = Classe de 2 números --> non-observed
+# XXXX = Classe de 2 números --> Classe de 1 (acrescenta 0) ou 2 números
+
+# registros únicos da coluna 'class' --> para estudar os casos
+unique_class_tra <- unique(tra_data_lookup[["class"]])
+typeof(unique_class_tra)
+unique_class_tra <- sort(unique_class_tra)
+unique_class_tra
+
+tra_data_lookup <- tra_data_lookup %>% mutate(
+  Trans_type = case_when(
+    class == 0 ~ "non_to_non",
+    class < 10 ~ "non_to_class1",
+    class <100 ~ "non_to_class2",
+    (class %% 100 == 0 & class <1000) ~ "class1_to_non",
+    (class %% 100 != 0 & class < 1000) ~"class1_to_class12",
+    (class %% 100 == 0 & class >= 1000) ~ "class2_to_non",
+    (class %% 100 != 0 & class >= 1000) ~"class2_to_class12"
+  )
+)
+
+tra_data_lookup <- tra_data_lookup %>% mutate(
+  # cria uma coluna com a classe de origem
+  Class_id_from = as.numeric(case_when(
+    class == 0 ~ "27", # 'from' non-observed = 27 (legenda)
+    class < 10 ~ "27", # 'from' non-observed = 27 (legenda)
+    class < 100 ~ "27", # 'from' non-observed = 27 (legenda)
+    (class %% 100 == 0 & class <1000) ~ str_sub(class,1,1), # pega o primeiro num.
+    (class %% 100 != 0 & class < 1000) ~ str_sub(class,1,1), # pega o primeiro num.
+    (class %% 100 == 0 & class >= 1000) ~ str_sub(class,1,2), # pega os dois prim. num.
+    (class %% 100 != 0 & class >= 1000) ~ str_sub(class,1,2) # pega os dois prim. num.
+  )),
+  # cria uma coluna com a classe de destino
+  Class_id_to = as.numeric(case_when(
+    class == 0 ~ "27", # 'to' non-observed = 27 (legenda)
+    class < 10 ~ as.character(class), # pega o primeiro num.
+    class < 100 ~ as.character(class), # pega os dois prim. num.
+    (class %% 100 == 0 & class <1000) ~ "27", # 'to' non-observed 
+    (class %% 100 != 0 & class < 1000) ~ str_sub(class,2,3), # 2ndo e 3o numeros
+    (class %% 100 == 0 & class >= 1000) ~ "27", # 'to' non-observed
+    (class %% 100 != 0 & class >= 1000) ~ str_sub(class,3,4) # 3o e 4o numeros
+  ))
+)
+
+# teste da função para extrar caracteres
+str_sub(tra_data_lookup[[1,"class"]],1,1)
+
+```
+
+### "vlookup' / 'procv' in the table 'legenda'
+#### Values of 'levels' for each 'from/to class'
+```{r}
+## utilizando o pacote plyr, função mapvalues, pois retorna um vetor que pode ser
+## incorporado em uma nova coluna. O 'merge' retorna um data.frame.
+
+# cria uma coluna chamada 'Class_text_from' buscando os valores de
+# 'Class_id_from' na tabela 'legenda$ID' (from) e retornando o valor da
+# coluna 'Classe_texto'
+tra_data_lookup$Class_text_from <- mapvalues(tra_data_lookup$Class_id_from, 
+                                        from = legenda$ID,
+                                        legenda$Classe_texto)
+
+# mesma coisa para o 'to'
+tra_data_lookup$Class_text_to <- mapvalues(tra_data_lookup$Class_id_to, 
+                                        from = legenda$ID,
+                                        legenda$Classe_texto)
+
+
+### A partir da 'Class_id_from/to' cria uma coluna com o índice geral da classe
+### 'level_id', que é a organização de tópicos das classes
+tra_data_lookup$Class_from_level_id <- mapvalues(tra_data_lookup$Class_id_from,
+                                        from = legenda$ID,
+                                        legenda$Classe_level_id)
+
+tra_data_lookup$Class_to_level_id <- mapvalues(tra_data_lookup$Class_id_to, 
+                                        from = legenda$ID,
+                                        legenda$Classe_level_id)
+
+# A partir de Class_from_level_id, procura o 'texto' da classe de nível 1 (1 caracter da esq.)
+tra_data_lookup$Class_from_level1 <- mapvalues(
+  str_sub(tra_data_lookup$Class_from_level_id,start = 1,end = 1),
+  from = legenda$Classe_level_id,
+  legenda$Classe_texto)
+
+tra_data_lookup$Class_to_level1 <- mapvalues(
+  str_sub(tra_data_lookup$Class_to_level_id,start = 1,end = 1),
+  from = legenda$Classe_level_id,
+  legenda$Classe_texto)
+
+# A partir de Class_from_level_id, procura o 'texto' da classe de nível 2 (2 caracteres da esq.)
+tra_data_lookup$Class_from_level2 <- mapvalues(
+  str_sub(tra_data_lookup$Class_from_level_id,start = 1,end = 2),
+  from = legenda$Classe_level_id,
+  legenda$Classe_texto)
+
+tra_data_lookup$Class_to_level2 <- mapvalues(
+  str_sub(tra_data_lookup$Class_to_level_id,start = 1,end = 2),
+  from = legenda$Classe_level_id,
+  legenda$Classe_texto)
+
+# A partir de Class_from_level_id, procura o 'texto' da coluna "Natural/Antrópico", com base nos 2 caracteres a esquerda
+tra_data_lookup$Class_from_level0 <- mapvalues(
+  str_sub(tra_data_lookup$Class_from_level_id,start = 1,end = 2),
+  from = legenda$Classe_level_id,
+  legenda$`Natural/Antrópico`)
+
+tra_data_lookup$Class_to_level0 <- mapvalues(
+  str_sub(tra_data_lookup$Class_to_level_id,start = 1,end = 2),
+  from = legenda$Classe_level_id,
+  legenda$`Natural/Antrópico`)
+
+# salva a tabela criada com a data atual no fim
+tra_data_lookup %>% fwrite(file = paste0("tra_data_lookup_",Sys.Date(),".csv"))
+
+
+```
+
+### Creating matrixes from the long data (for each state and years of transition):
+```{r}
+# filtrando dados a partir da tabela 'long' para criar uma matriz
+# Estado do Acre, de 1985 para 1986 (redundante o Tempo == Anual)
+filter_tra_data_long <- tra_data_lookup %>% filter(
+  Tempo == "Anual" & 
+    Estado == "AC" &
+    Ano_from == 1985 &
+    Ano_to == 1986
+  ) %>% 
+  select( # selecionando as colunas de interesse para o df ficar menor
+    Estado, 
+    Class_from_level1, 
+    Class_to_level1, 
+    Ano_from, 
+    Ano_to, 
+    area)
+
+# criando a matriz utilizando as colunas 'from/to class'
+AC_tra_data_wide <- filter_tra_data_long %>% dcast(
+  Class_from_level1 ~ Class_to_level1, # utiliza as categorias principais como base
+  value.var = "area", # usa as áreas como valores
+  fun.aggregate = sum # soma os valores das áreas das subcategorias
+)
+
+# ao comparar com dados do site, cuidar para visualizar as mesmas classes, pois ele 
+# utiliza as 'classes primárias' (Nível 1).
+
+# esse filtro pode ser utilizado para qualquer ano e estado que se queira analisar.
+# por exemplo criando um 'shiny' com essas 'variáveis'.
+```
+
+### Transforming the tra_data into 'wide' format with 'dcast':
+### UNFINISHED!
+```{r}
+
+# selecting the columns of interest
+tra_data_wide <- tra_data_lookup %>% select(Estado, 
+                                            from_class, 
+                                            to_class, 
+                                            Ano_from, 
+                                            Ano_to, 
+                                            Tempo, 
+                                            area)
+# transforming long to wide with dcast
+# first part of formula determines the 'indexes', and second part
+# is splited into columns
+
+tra_data_wide <- tra_data_wide %>% dcast(
+  Estado + from_class + to_class + Tempo ~ Ano_from + Ano_to,
+  value.var = "area") # column with the 'values' to fill the columns
+
+filter_tra_data <- tra_data_wide %>% filter(Tempo == "Anual" & Estado == "AC")
+
+```
+
+### Transforming the tra_data into 'wide' format with 'dcast'
+#### Columns are the classes - observations (State + Year)
+#### BAD RESULT ... too many combinations!
+```{r}
+# selecting the columns of interest
+tra_data_wide_classes <- tra_data_lookup %>% select(Estado, 
+                                            from_class, 
+                                            to_class, 
+                                            Ano_from, 
+                                            Ano_to, 
+                                            Tempo, 
+                                            area)
+# transforming long to wide with dcast
+# first part of formula determines the 'indexes', and second part
+# is splited into columns
+
+tra_data_wide_classes <- tra_data_wide_classes %>% dcast(
+  Estado + Ano_from + Ano_to + Tempo ~ from_class + to_class,
+  value.var = "area") # column with the 'values' to fill the columns
+
+# criou 600 e poucas combinações de from+to class...
+
+```
+
+# SUMS
+## Sums per state vs IBGE data
+```{r}
+
+# somas para os dados de transição:
+states_area_tra_data <- tra_data_lookup %>% 
+  filter(Ano_from == 2018, Ano_to == 2019) %>%# filtra apenas um 'set'
+  group_by(Estado) %>%  # agrupa por estado
+  dplyr::summarise(area_total = sum(area)) %>% # soma as áreas por estado
+  mutate(area_ha = area_total * 100) # cria nova coluna em 'hectares'
+
+### summarise de outro pacote está sobrescrevendo o dplyr! 
+### esse outro não funciona com o 'group_by'
+
+states_area_tra_data %>% fwrite("Areas_dos_estados_tra_data_2018.csv")
+
+# somas para os dados de cobertura:
+states_area_cov_data <- cover_data %>% 
+  filter(Ano == 2020) %>% 
+  group_by(Estado) %>% 
+  dplyr::summarise(area_total = sum(`1. Floresta`,
+                                    `2. Formação Natural não Florestal`,
+                                    `3. Agropecuário`,
+                                    `4. Área Não Vegetada`,
+                                    `5. Água`,
+                                    `6. Não Observado`,
+                                    na.rm = TRUE)) %>% 
+  mutate(area_ha = area_total/100)
+
+states_area_cov_data %>% fwrite("Areas_dos_estados_cov_data_2020.csv")
+
+### segundo as análises realizadas, parece ser mais interessante
+### criar uma tabela interna com base nos dados do próprio Mapbiomas
+### pois o IBGE tem discrepâncias significativas para o RS e SC (lagunas)
+
+```
+
+
+# TARGET VARIABLE (DEPENDENT): DEFORESTATION AREA
+
+## Plot Years X Supressao vegetação primária
+
+```{r}
+
+head(def_data)
+
+def_data <- def_data %>% mutate(Ano = as.numeric(Ano))
+
+def_data %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = `1_Supres_veg_prim`,
+                color = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 7,
+             nrow = 4) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+```
+
+## How is "Deforestation area data" related to "Transition data"?
+### Take a look on the methodology presented on the website...
+#### It is not a simple sum, it takes more than 1 year into account.
+```{r}
+
+head(tra_data_lookup)
+
+# filtra os dados apenas do Acre, para o ano de início de 1987, onde as classes de início e fim são diferentes. 
+#Agrupa pelas classes e sumariza as áreas por essas classes
+AC_from1987_difClasses <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987,
+         Class_from_level2 != Class_to_level2) %>% 
+  group_by(Class_from_level2) %>% 
+  dplyr::summarise(Area_total = sum(area))
+
+# sem a condição de classes diferentes:
+AC_from1987_allClasses <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987) %>% 
+  group_by(Class_from_level2) %>% 
+  dplyr::summarise(Area_total = sum(area))
+
+# Área total das classes "nível 2 from" de 1987:
+AC_areaTotal <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987) %>% 
+  dplyr::summarise(Area_total = sum(area))
+
+# Apenas as transições de "Natural" para "Antrópico":
+AC_from1987_Natu_Antr <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987,
+         Class_from_level0 == "Natural",
+         Class_to_level0 == "Antrópico") %>% 
+  group_by(Class_from_level2) %>% 
+  dplyr::summarise(Area_total = sum(area))
+
+#Agrupa pela classe Nível 1 e sumariza as áreas por essas classes
+AC_from1987_difClasses_L1 <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987,
+         Class_from_level1 != Class_to_level1) %>% 
+  group_by(Class_from_level1) %>% 
+  dplyr::summarise(Area_total = sum(area))
+
+# Registros com mudança do level0:
+AC_from1987_difClasses_L1_noSumms <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987,
+         Class_from_level0 == "Natural",
+         Class_to_level0 == "Antrópico")
+
+
+AC_from1987_difClasses_L1_noSumms %>%
+  fwrite("tra_data_AC_from1987_difClasses_L1_noSumms.csv")
+
+###### TESTANDO PARA 1986 E 1988 PARA VER SE ACHA O 'ERRO':
+
+# 1986 - Registros com mudança do level0:
+AC_from1986_difClasses_L1_noSumms <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1986,
+         Class_from_level0 == "Natural",
+         Class_to_level0 == "Antrópico")
+
+
+AC_from1986_difClasses_L1_noSumms %>%
+  fwrite("tra_data_AC_from1986_difClasses_L1_noSumms.csv")
+
+# 1988 - Registros com mudança do level0:
+AC_from1988_difClasses_L1_noSumms <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1988,
+         Class_from_level0 == "Natural",
+         Class_to_level0 == "Antrópico")
+
+
+AC_from1988_difClasses_L1_noSumms %>%
+  fwrite("tra_data_AC_from1988_difClasses_L1_noSumms.csv")
+
+
+### FALTOU FOI CONSIDERAR O QUE 'REGENERA'!!!!
+
+# Operação oposta da anterior... de Antrópico para Natural:
+# Registros com mudança do level0:
+AC_from1987_difClasses_L1_noSumms_AntrNatur <- tra_data_lookup %>% 
+  filter(Estado == "AC",
+         Ano_from == 1987,
+         Class_from_level0 == "Antrópico",
+         Class_to_level0 == "Natural" |
+           Class_to_level0 == "Mosaico" )
+
+
+AC_from1987_difClasses_L1_noSumms_AntrNatur %>%
+  fwrite("tra_data_AC_from1987_difClasses_L1_noSumms_AntrNatur2.csv")
+
+```
+
+## Creating the 'total' (sum) area in def_data
+```{r}
+# Cria uma coluna com o total (soma) dos campos de Nível 1:
+def_data <- def_data %>% rowwise %>% dplyr::mutate(
+  Total_level1 = sum(`1. Supressão vegetação primária`,  
+                  `2. Supressão vegetação secundária`, na.rm = TRUE))
+
+```
+
+## CHANGING THE HEADERS OF ALL THE TABLES (no spaces and special chars.)
+```{r}
+# lê o arquivo com os novos headers
+new_headers <- fread(choose.files())
+
+# atribui os novos nomes no df def_data (tem que ser um vetor de caracteres!)
+names(def_data) <- unlist(new_headers[1:26,"def_data"])
+
+# typeof(unlist(new_headers[1:26,"def_data"]))
+
+# o mesmo para reg_data 
+names(reg_data) <- unlist(new_headers[1:27,"reg_data"])
+
+# não funciona com length(names(reg_data))...??
+# typeof(length(names(reg_data)))
+
+# o mesmo para cover_data 
+length(cover_data) # 37
+names(cover_data) <- unlist(new_headers[1:37,"cover_data"])
+
+# o mesmo para min_data 
+length(min_data) # 6
+names(min_data) <- unlist(new_headers[1:6,"min_data"])
+
+# não é necessário para tra_data pois já está em ingles (Erath Engine)
+
+```
+
+## Creating a relative parameter of the deforastation by the remains area from the previous year
+```{r}
+
+# inicializa um objeto 
+def_relative <- data.frame(matrix(ncol = 1, nrow = nrow(def_data)))
+names(def_relative)[1] <- "Form_Florestal"
+
+# criar as chaves que serão procuradas na tabela de cobertura, com o ano anterior:
+lookup_keys <- paste0(def_data$Estado, "_" , def_data$Ano -1) 
+
+# ajusta a configuração de visualização de dígitos dos números
+options(digits = 15)
+
+# cria um vetor com os valores das áreas de "1.1" da tabela cover_data e salva como número
+temp_lookup <- as.numeric( lookup_keys %>% mapvalues(
+  from = cover_data$key,
+  to = cover_data$`1.1_Form_Florestal`
+))
+
+# visualziando para ter certeza que ficou como número
+temp_lookup[1]
+
+# converte o vetor para data frame, para poder usar no mutate a seguir:
+temp_lookup <- as.data.frame(temp_lookup)
+
+# data.frame apenas com os valores em questão:
+def_FormFlorest <- cbind(cover_keys = lookup_keys, 
+                         Area_Form_Florestal = temp_lookup,
+                         def_keys = def_data$key,
+                         Area_def_FF = def_data$`1.1.1_Form_Florestal` 
+                         )
+
+# não sei porque mas não funciona no cbind a atribuição de nome para essa coluna...
+names(def_FormFlorest)[2] <- "Area_Form_Florestal"
+
+def_FormFlorest <- def_FormFlorest %>% mutate(
+  relat_def_FF = Area_def_FF/Area_Form_Florestal,
+  Ano = as.numeric(str_sub(def_keys,start = -4 , end = -1)),
+  Estado = str_sub(def_keys,start = 1 , end = 2))
+
+# Cria a coluna com a divisão entre os dois campos no novo data.frame:
+def_relative <- as.data.frame(def_data$`1.1.1_Form_Florestal`/temp_lookup)
+
+#testando as características dessa 'coluna' criada
+typeof(def_relative)
+class(def_relative)
+def_relative$temp_lookup
+
+# adicionando os dados de def_data em def_relative
+def_relative <- cbind(def_data, def_relative)
+
+# mudando o nome da coluna
+names(def_relative)[ncol(def_relative)] <- "Form_Florestal"
+
+# usando o mutate para fazer a mesma operação - retorna a tabela completa
+## cria uma lista dentro do data.frame... não entendi...
+#def_relative <- def_data %>% mutate(
+#  Form_Florestal = `1.1.1_Form_Florestal`/temp_lookup
+#)
+
+def_relative %>% data.table::fwrite("def_relative_past_year_FormFlorestal.csv")
+def_FormFlorest %>% data.table::fwrite("def_FormFlorestal_past_year.csv")
+
+```
+
+### Plot of the new column (relative deforestation)
+```{r}
+
+#def_relative <- def_relative %>% mutate(Ano = as.numeric(Ano))
+colnames(def_relative)
+
+def_relative %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = Form_Florestal,
+                color = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 7,
+             nrow = 4) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+# testando com o banco de dados def_FormFlorest
+
+colnames(def_FormFlorest)
+def_FormFlorest %>% ggplot() +
+  geom_line(aes(x = Ano, 
+                y = relat_def_FF,
+                color = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 7,
+             nrow = 4) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90))
+
+
+```
+
+# TRANSIOTION DATA SUMMARY
+## Creates reference (lookup) tables for the classes
+```{r}
+# cria uma tabela de registro únicos de 'class', com as outras informações
+# de nome de classes e outras categorias
+tra_unique_classes <- tra_data_lookup %>% 
+  dplyr::distinct(class, .keep_all = TRUE) %>% 
+  select(class, from_class, to_class, Trans_type:Class_to_level0)
+
+# registros únicos das classes de destino
+tra_unique_classes_to <- tra_unique_classes %>% 
+  dplyr::distinct(Class_id_to, .keep_all = TRUE) %>% 
+  select(Class_id_to, to_class, Class_to_level_id, Class_to_level0, Class_to_level1, Class_to_level2)
+
+# registros únicos das classes de origem
+tra_unique_classes_from <- tra_unique_classes %>% 
+  dplyr::distinct(Class_id_from, .keep_all = TRUE) %>% 
+  select(Class_id_from, from_class, Class_from_level_id, Class_from_level0, Class_from_level1, Class_from_level2)
+
+
+```
+
+## Main transitions per state (cumulative / sum)
+```{r}
+
+# Cria um objeto para armazenar os resultados
+# Sumariza os dados de transição pelos campos "Estado" e 'class', 
+# somando as 'areas' para cada classe.
+tra_cumulative <- tra_data_lookup %>% group_by(Estado, class) %>% 
+  dplyr::summarize(
+    area_per_class = sum(area, 
+                          na.rm = TRUE)
+  )
+
+
+# puxa os valores do nome das classes para a tabela sumarizada por estado
+tra_cumulative <- inner_join(
+  tra_cumulative, tra_unique_classes,
+  by = "class"
+)
+
+# salva o arquivo com a data atual:
+tra_cumulative %>% fwrite(paste0("tra_cumulative_per_state_and_class_",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# filtra os casos onde a classe de 'original'(from) é igual a 'transformada' (to)
+tra_cum_dif_class <- tra_cumulative %>% 
+  filter(! (Class_id_from == Class_id_to))
+
+# salva o arquivo com a data atual:
+tra_cum_dif_class %>%
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_classes_",
+                                 Sys.Date(),
+                                 ".csv"))
+
+
+## Novo cálculo de áreas, agora apenas considerando a classe de destino!
+# agrupa pelas classes de 'destino' (to) e sumariza (soma as áreas)
+tra_cum_dif_class_to <- tra_cum_dif_class %>% 
+  group_by(Estado, Class_id_to) %>% 
+  dplyr::summarize(area_per_to_class = sum(area_per_class, na.rm = TRUE))
+
+# puxa os valores do nome das classes para a tabela sumarizada por estado
+tra_cum_dif_class_to <- inner_join(
+  tra_cum_dif_class_to, tra_unique_classes_to,
+  by = "Class_id_to",
+  keep = FALSE
+)
+
+# salva o arquivo com a data atual:
+tra_cum_dif_class_to %>%
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_classes_to_",
+                                 Sys.Date(),
+                                 ".csv"))
+
+```
+
+### Plotting the cumulative transition data (per state) - col graph
+```{r fig.align = "center", echo = FALSE, fig.width = 14, editor_options: chunk_output_ype: inline}
+
+# saving in an image because the graph is too tall and wide
+png(filename="tra_cumulative_per_state_and_class_dif_class_to.png", 
+    width=1000, 
+    height=3000)
+
+#dev.new(width=10,height=100,noRStudioGD = TRUE) # não abre 'scroll'
+# dev.new(width=600, height=3000, unit="px", noRStudioGD = TRUE, )
+
+tra_cum_dif_class_to %>% ggplot() +
+  geom_col(aes(x = to_class, 
+                y = area_per_to_class,
+                fill = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 2,
+             nrow = 14) +
+  theme_bw(base_size = 5) +
+  coord_flip()
+
+ggsave(filename="tra_cumulative_per_state_and_class_dif_class_to.png", 
+       units = "px",
+    width=3000, 
+    height=6000)
+```
+
+### Plotting one graph at a time with ordered categories:
+```{r}
+
+# escolher onde salvar os plots
+temp_saveF <- svDialogs::dlg_dir()$res
+  #choose.dir()
+
+# gerar os gráficos para todos os estados
+for (i in statesBR$Sigla) {
+  
+  plot(
+    tra_cum_dif_class_to %>% filter(Estado == i) %>% 
+    ggplot() +
+    geom_col(aes(x = reorder(to_class , to_class_pc), 
+                  y = area_per_to_class)) +
+      xlab("Classe") + # vira o Y prq tem coord flip
+      ylab("Area (ha)") + # vira o X prq tem coord flip
+      ggtitle(i) +
+    theme_bw() +
+    coord_flip()
+    )
+  
+  ggsave(filename=paste0(temp_saveF,
+    "/tra_cum_dif_class_to_ordered_",
+    i,"_", Sys.Date(),".png") #, 
+    #   units = "px",
+    #width=3000, 
+    #height=6000
+    )
+  
+
+}
+
+### MESMOS PLOTS DE ANTES PORÉM UTILIZANDO A COLUNA DE PERCENTUAL
+# gerar os gráficos para todos os estados
+for (i in statesBR$Sigla) {
+  
+  plot(
+    tra_cum_dif_class_to %>% filter(Estado == i) %>% 
+    ggplot() +
+    geom_col(aes(x = reorder(to_class , to_class_pc), 
+                  y = to_class_pc)) +
+      xlab("Classe") + # vira o Y prq tem coord flip
+      ylab("% do total") + # vira o X prq tem coord flip
+      ggtitle(i) +
+    theme_bw() +
+    scale_y_continuous(labels = percent_format()) +
+    coord_flip()
+    )
+  
+    ggsave(filename=paste0(temp_saveF,
+    "/tra_cum_dif_class_to_ordered_pc_",
+    i,"_", Sys.Date(),".png") #, 
+    #   units = "px",
+    #width=3000, 
+    #height=6000
+    )
+
+}
+
+```
+
+
+### Creating a percent column of the class/total in the cum_dif_class_to' table
+### Getting the top 3 transition areas (sums) for the tables
+```{r}
+
+# cria uma coluna com o percentual de cada classe em relação ao todo
+tra_cum_dif_class_to <- tra_cum_dif_class_to %>% 
+  group_by(Estado) %>% 
+  dplyr:: mutate(
+  to_class_pc = area_per_to_class/sum(area_per_to_class)
+)
+
+###### TOP 3 #######
+
+# as 3 classes 'to' com maiores áreas de transição
+tra_dif_class_to_top3_perState <- tra_cum_dif_class_to %>% 
+  arrange(desc(area_per_to_class)) %>% 
+  group_by(Estado) %>% 
+  slice(1:3)
+
+# salva o arquivo com a data atual:
+tra_dif_class_to_top3_perState %>% 
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_class_to_top3",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# classes únicas no top3:
+unique_tra_to_classes_top3 <- as.data.frame(
+  unique(tra_dif_class_to_top3_perState$to_class))
+
+colnames(unique_tra_to_classes_top3) <- "Classes"
+
+# salva o arquivo com a data atual:
+unique_tra_to_classes_top3 %>% 
+  fwrite(paste0("tra_unique_to_classes_top3",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# as 3 classes 'to' com maiores áreas de transição - apenas ANTRÓPICO!
+tra_dif_class_to_top3_perState_ANTRO <- tra_cum_dif_class_to %>% 
+  filter(Class_to_level0 == "Antrópico") %>% 
+  arrange(desc(area_per_to_class)) %>% 
+  group_by(Estado) %>% 
+  slice(1:3)
+
+# salva o arquivo com a data atual:
+tra_dif_class_to_top3_perState_ANTRO %>% 
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_class_to_top3_ANTRO",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# classes únicas no top3 ANTRO:
+unique_tra_to_classes_top3_ANTRO <- as.data.frame(
+  unique(tra_dif_class_to_top3_perState_ANTRO$to_class))
+
+colnames(unique_tra_to_classes_top3_ANTRO) <- "Classes"
+
+# salva o arquivo com a data atual:
+unique_tra_to_classes_top3_ANTRO %>% 
+  fwrite(paste0("tra_unique_to_classes_top3_ANTRO_",
+                                 Sys.Date(),
+                                 ".csv"))
+```
+
+### Criando a tabela TOP 3 - área de transição de Natural para Antrópico
+### NÃO FINALIZADO! (gerar os percentuais? para obter os top X transições...)
+```{r}
+
+head(tra_cum_dif_class)
+
+# filtra a tabela de transições com classes diferentes para apenas as que foram de Natural para Antrópico, level 0
+tra_nat_to_antro <- tra_cum_dif_class %>% 
+  dplyr::filter(
+    Class_from_level0 == "Natural" & Class_to_level0 == "Antrópico"
+  ) 
+
+# sumariza o total de áreas transicionadas de uma classe Natural para Antrópica por estad
+tra_nat_to_antro.summ <- tra_nat_to_antro %>% 
+  dplyr::group_by(Estado) %>% 
+  dplyr::summarise(Total_area = sum(area_per_class))
+
+# organiza a tabela pelos estados e áreas em ordem decrescente e pega os 3 primeiros registros (top 3)
+tra_nat_to_antro_top3 <- tra_nat_to_antro %>% 
+  dplyr::arrange(Estado, desc(area_per_class)) %>% 
+  dplyr::group_by(Estado) %>% 
+  slice(1:3)
+
+# organiza a tabela pelos estados e áreas em ordem decrescente e pega os 3 primeiros registros (top 3)
+tra_nat_to_antro_top5 <- tra_nat_to_antro %>% 
+  dplyr::arrange(Estado, desc(area_per_class)) %>% 
+  dplyr::group_by(Estado) %>% 
+  slice(1:5)
+
+head(tra_nat_to_antro)
+
+# salva o arquivo com a data atual:
+tra_nat_to_antro %>% fwrite(paste0("tra_nat_to_antro_", Sys.Date(),".csv"))
+
+# salva o arquivo com a data atual:
+tra_nat_to_antro.summ %>% fwrite(paste0("tra_nat_to_antro_summ_", Sys.Date(),".csv"))
+
+# salva o arquivo com a data atual:
+tra_nat_to_antro_top3 %>% fwrite(paste0("tra_nat_to_antro_top3_", Sys.Date(),".csv"))
+
+# salva o arquivo com a data atual:
+tra_nat_to_antro_top5 %>% fwrite(paste0("tra_nat_to_antro_top5_", Sys.Date(),".csv"))
+
+## SCRIPT ANTERIOR COPIADO PARA REFERÊNCIA
+### Top 3 classes que transicionaram de Natural para Antrópico 
+
+# as 3 classes 'to' com maiores áreas de transição - apenas ANTRÓPICO!
+tra_dif_class_to_top3_perState_NAT_TO_ANTRO <- tra_cum_dif_class_to %>% 
+  filter(Class_from_level0 == "Natural" & Class_to_level0 == "Antrópico") %>% 
+  arrange(desc(area_per_to_class)) %>% 
+  group_by(Estado) %>% 
+  slice(1:3)
+
+# salva o arquivo com a data atual:
+tra_dif_class_to_top3_perState_NAT_TO_ANTRO %>% 
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_class_to_top3_NAT_TO_ANTRO_",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# classes únicas no top3 ANTRO:
+unique_tra_to_classes_top3_NAT_TO_ANTRO <- as.data.frame(
+  unique(tra_dif_class_to_top3_perState_ANTRO$to_class))
+
+colnames(unique_tra_to_classes_top3_ANTRO) <- "Classes"
+
+# salva o arquivo com a data atual:
+unique_tra_to_classes_top3_NAT_TO_ANTRO %>% 
+  fwrite(paste0("tra_unique_to_classes_top3_NAT_TO_ANTRO_",
+                                 Sys.Date(),
+                                 ".csv"))
+```
+
+
+
+
+### Criando as tabelas TOP 5 - áreas de transição
+```{r}
+###### TOP 5 #######
+
+# as 5 classes 'to' com maiores áreas de transição
+tra_dif_class_to_top5_perState <- tra_cum_dif_class_to %>% 
+  arrange(desc(area_per_to_class)) %>% 
+  group_by(Estado) %>% 
+  slice(1:5)
+
+# salva o arquivo com a data atual:
+tra_dif_class_to_top5_perState %>% 
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_class_to_top5",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# classes únicas no top5:
+unique_tra_to_classes_top5 <- as.data.frame(
+  unique(tra_dif_class_to_top5_perState$to_class))
+
+colnames(unique_tra_to_classes_top5) <- "Classes"
+
+# salva o arquivo com a data atual:
+unique_tra_to_classes_top5 %>% 
+  fwrite(paste0("tra_unique_to_classes_top5",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# as 5 classes 'to' com maiores áreas de transição - apenas ANTRÓPICO!
+tra_dif_class_to_top5_perState_ANTRO <- tra_cum_dif_class_to %>% 
+  filter(Class_to_level0 == "Antrópico") %>% 
+  arrange(desc(area_per_to_class)) %>% 
+  group_by(Estado) %>% 
+  slice(1:5)
+
+# salva o arquivo com a data atual:
+tra_dif_class_to_top5_perState_ANTRO %>% 
+  fwrite(paste0("tra_cumulative_per_state_and_class_dif_class_to_top5_ANTRO",
+                                 Sys.Date(),
+                                 ".csv"))
+
+# classes únicas no top5 ANTRO:
+unique_tra_to_classes_top5_ANTRO <- as.data.frame(
+  unique(tra_dif_class_to_top5_perState_ANTRO$to_class))
+
+colnames(unique_tra_to_classes_top5_ANTRO) <- "Classes"
+
+# salva o arquivo com a data atual:
+unique_tra_to_classes_top5_ANTRO %>% 
+  fwrite(paste0("tra_unique_to_classes_top5_ANTRO_",
+                                 Sys.Date(),
+                                 ".csv"))
+```
+
+
+### Plotting top 5 per 'to_class'
+```{r}
+
+# escolher onde salvar os plots
+temp_saveF <- svDialogs::dlg_dir()$res
+
+#dev.new(width=10,height=100,noRStudioGD = TRUE) # não abre 'scroll'
+# dev.new(width=600, height=3000, unit="px", noRStudioGD = TRUE, )
+
+tra_dif_class_to_top5_perState %>% ggplot() +
+  geom_col(aes(x = to_class, 
+                y = area_per_to_class,
+                fill = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 2,
+             nrow = 14) +
+  theme_bw(base_size = 6) +
+  coord_flip()
+
+  ggsave(filename=paste0(temp_saveF,
+    "/tra_cumulative_per_state_and_class_dif_class_to_Top5",
+    Sys.Date(),".png"), 
+    units = "px",
+    width=3000, 
+    height=6000
+    )
+
+```
+
+### Plotting top 3 per 'to_class'
+```{r}
+
+# escolher onde salvar os plots
+temp_saveF <- svDialogs::dlg_dir()$res
+
+#dev.new(width=10,height=100,noRStudioGD = TRUE) # não abre 'scroll'
+# dev.new(width=600, height=3000, unit="px", noRStudioGD = TRUE, )
+
+tra_dif_class_to_top3_perState %>% ggplot() +
+  geom_col(aes(x = to_class, 
+                y = area_per_to_class,
+                fill = Estado)) + 
+  facet_wrap(~ Estado,
+             scales = "free",
+             ncol = 2,
+             nrow = 14) +
+  theme_bw(base_size = 6) +
+  theme(legend.position = 'none')+
+  coord_flip()
+
+  ggsave(filename=paste0(temp_saveF,
+    "/tra_cumulative_per_state_and_class_dif_class_to_Top3_",
+    Sys.Date(),".png"), 
+    units = "px",
+    width=2000, 
+    height=3000
+    )
+
+```
+
+### Exportando a tabela top 3
+```{r}
+
+tra_dif_class_to_top3_perState %>% fwrite("tra_top3_por_estado.csv")
+
+```
+
+
