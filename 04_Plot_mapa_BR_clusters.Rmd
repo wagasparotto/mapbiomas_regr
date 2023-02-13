@@ -1,0 +1,327 @@
+---
+title: "Brasil_map_clusters_plot"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## Importing the IBGE Brazilian states map (shapefile):
+```{r}
+
+shape_states <- readOGR(dsn = "Estados_BR",
+                        layer = "lml_unidade_federacao_a")
+
+plot(shape_states)
+
+tm_shape(shp = shape_states) + 
+  tm_polygons()
+
+shape_states$sigla
+shape_states$nome
+shape_states@data # <<-- como acessar a base de dados do shp!
+
+tm_shape(shp = shape_states) + 
+  tm_fill(col = "sigla", palette = "Blues") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+### auxiliar para copiar do scrip de "Análise espacial"
+
+  # Para combinar os dados do objeto dados_sp com a base de dados de nosso 
+# shapefile, podemos utilizar a função merge():
+#shp_dados_sp <- merge(x = shp_sp,
+#                      y = dados_sp,
+#                      by.x = "CD_GEOCMU",
+#                      by.y = "codigo")
+
+# Como saber quais paletas de cores podem ser utilizadas? 
+display.brewer.all()
+
+# tentativa de 'automatizar' o local do shape
+shape_states <- readOGR(dsn = as.character(choose.dir()),
+                        layer = as.character(choose.files())) # retirar o ".shp" do final do nome do arquivo para funcionar dessa forma...
+
+```
+
+## Juntando a tabela com o número dos clusters com os dados do shp
+```{r}
+# principais clusters para visualizar no mapa e avaliar
+main_hclust <- c(
+  "def_hclust_ward_eucl_k4",
+  "def_hclust_ward_eucl_k6",
+  "def_hclust_ward_eucl_k7",
+  "def_hclust_ward_dtw_sakoe_ws0_k7",
+  "def_hclust_ward_dtw_sakoe_ws1_k7",
+  "def_hclust_ward_dtw_sakoe_ws1_k9",
+  "def_hclust_ward_dtw_sakoe_ws0_k6",
+ "def_hclust_ward_dtw_sakoe_ws1_k6",
+ "def_kmeans_eucl_k7",
+ "def_kshape_sbd_k7"
+)
+
+# selecionando os dados para o merge
+def_clusters_table_main <- def_clusters_table %>% 
+  select(Estado, all_of(main_hclust))
+
+
+  # Para combinar os dados do objeto dados_sp com a base de dados de nosso 
+# shapefile, podemos utilizar a função merge():
+shape_states <- merge(x = shape_states,
+                      y = def_clusters_table_main,
+                      by.x = "sigla",
+                      by.y = "Estado")
+```
+
+
+
+# MAPAS DO BR COM OS ESTADOS COLORIDOS PELO CLUSTER
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - Euclidean k=4
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_eucl_k4", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+
+
+# Como saber quais paletas de cores podem ser utilizadas? 
+display.brewer.all()
+
+# Qualitative palletes e número de cores:
+# Accent	8
+# Dark2	8
+# Paired	12
+# Pastel1	9
+# Pastel2	8
+# Set1	9
+# Set2	8
+# Set3	12
+
+
+```
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - Euclidean k=6
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_eucl_k6", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+
+
+# Como saber quais paletas de cores podem ser utilizadas? 
+display.brewer.all()
+
+# Qualitative palletes e número de cores:
+# Accent	8
+# Dark2	8
+# Paired	12
+# Pastel1	9
+# Pastel2	8
+# Set1	9
+# Set2	8
+# Set3	12
+
+
+```
+
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - Euclidean k=7
+```{r}
+
+map_palette <- c("plum4","red2","firebrick","deepskyblue3","limegreen","dodgerblue4","burlywood2")
+
+## Ordem original da paleta lancet:
+# "dodgerblue4","red2","limegreen","deepskyblue3","plum4","burlywood2","firebrick"
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_eucl_k7.x", 
+          palette = map_palette, 
+          title = "Grupo",
+          alpha = 0.8) + # cores anteriores da paleta Accent
+  tm_layout() +
+  tm_text( text = "sigla",
+           size = 0.7,
+           col = "black",
+           shadow = TRUE) +
+  tm_compass(type = "8star", 
+             show.labels = 3) +
+  #tm_grid()
+  tm_graticules(alpha = 0.5) +
+  tm_scale_bar()
+
+
+
+# Como saber quais paletas de cores podem ser utilizadas? 
+display.brewer.all()
+
+# Qualitative palletes e número de cores:
+# Accent	8
+# Dark2	8
+# Paired	12
+# Pastel1	9
+# Pastel2	8
+# Set1	9
+# Set2	8
+# Set3	12
+
+
+```
+
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - Euclidean k=7
+## COM AS 7 CORES DO GGPLOT
+```{r}
+
+#map_palette <- c("plum4","red2","firebrick","deepskyblue3","limegreen","dodgerblue4","burlywood2")
+map_palette <- seven.colors
+## Ordem original da paleta lancet:
+# "dodgerblue4","red2","limegreen","deepskyblue3","plum4","burlywood2","firebrick"
+
+
+# factor (procurar o número do cluster nos nomes e pega o valor de fato ex: clus.hier.fact['3'] retorna 7 - último cluster)
+clus.hier.fact <- factor(seq(1,7,1) , levels = c(6,2,5,4,1,7,3))
+names(clus.hier.fact) <- c(6,2,5,4,1,7,3)
+
+
+# trocand os valores dos clusters no novo objeto criado para o plot
+shape.states.reorder <- shape_states
+shape.states.reorder$def_hclust_ward_eucl_k7.x <- as.integer(clus.hier.fact[shape_states$def_hclust_ward_eucl_k7.x])
+
+shape.states.reorder$def_hclust_ward_eucl_k7.x <- factor(shape.states.reorder$def_hclust_ward_eucl_k7.x, levels = seq(1,7,1))
+
+shape_states$def_hclust_ward_eucl_k7.x
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape.states.reorder) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_eucl_k7.x", 
+          palette = map_palette, 
+          title = "Grupo",
+          alpha = 1) + # cores anteriores da paleta Accent
+  tm_layout() +
+  tm_text( text = "sigla",
+           size = 0.7,
+           col = "black",
+           shadow = TRUE) +
+  tm_compass(type = "8star", 
+             show.labels = 3) +
+  #tm_grid()
+  tm_graticules(alpha = 0.5) +
+  tm_scale_bar()
+
+
+
+# Como saber quais paletas de cores podem ser utilizadas? 
+display.brewer.all()
+
+# Qualitative palletes e número de cores:
+# Accent	8
+# Dark2	8
+# Paired	12
+# Pastel1	9
+# Pastel2	8
+# Set1	9
+# Set2	8
+# Set3	12
+
+
+```
+
+
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - dtw Sakoe ws0 k=7
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_dtw_sakoe_ws0_k7", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - dtw Sakoe ws1 k=7
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_dtw_sakoe_ws1_k7", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - dtw Sakoe ws1 k=9
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado 
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_dtw_sakoe_ws1_k9", 
+          palette = "Accent",
+          breaks = seq(1,10,1)) + # para não agrupar os clusters
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
+
+## Plot dos clusters hierárquicos (cores) no mapa do BR - dtw Sakoe ws1 k=6
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_hclust_ward_dtw_sakoe_ws1_k6", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
+
+## Plot dos clusters kmeans (cores) no mapa do BR - eucl k=7
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_kmeans_eucl_k7", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
+
+## Plot dos clusters kshape (cores) no mapa do BR - sbd k=7
+```{r}
+
+# plot do mapa com as cores dos clusters em cada estado (Euclidean k=7)
+tm_shape(shp = shape_states) + 
+  tm_borders(col = "black") +
+  tm_fill(col = "def_kshape_sbd_k7", palette = "Accent") +
+  tm_layout() +
+  tm_compass(type = "8star", 
+             show.labels = 3)
+
+```
