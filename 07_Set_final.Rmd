@@ -1,0 +1,453 @@
+---
+title: "08_Set_final"
+author: "WAG"
+date: "`r Sys.Date()`"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+
+
+########### SET FINAL DE SÉRIES ESCOLHIDO FOI A REGR_106 ##########
+
+## Escolhendo pasta para salvar produtos
+```{r}
+
+saveFolder <- choose.dir()
+saveFolder <- str_replace_all(string = saveFolder, pattern = "\\\\", replacement = "/")
+
+```
+
+
+## Lambdas utilizados na transformação Box-CoX
+```{r}
+
+(lambdas <- as.data.frame(regr.lambda$Regr_106, row.names = "Lambda") ) %>% data.table::fwrite(paste0(saveFolder,"/Lambdas.csv"))
+
+```
+
+
+## Vetores com estados que devem e não devem ter Box-Cox aplicado (comBC e semBC):
+```{r}
+
+comBC <- sort(c("AM", "MT", "MG", "PI", "PR" ,"SP", "AL", "AP", "BA", "ES", "MA", "PB", "PE", "RJ", "RN", "RR", "SC", "SE" ))
+semBC <- sort(c("AC", "CE", "DF", "GO", "MS", "PA", "RS", "RO", "TO" ))
+
+```
+
+
+## Pegando o banco de dados e os modelos para cada um dos casos (com e sem BC) em um único objeto
+```{r}
+
+#Set 106 como final - se por acaso mudar, alterar o número do Regr_XX
+
+# Objetos para armazenar set final
+db.regr <- list()
+db.regr.std <- list()
+
+step.models <- list()
+step.models.std <- list()
+
+# só uitilizar para plots!
+step.models.back <- list()
+step.models.std.back <- list()
+
+step.models.check <- list()
+step.models.std.check <- list()
+
+
+# Para cada estado testa se está no vetor que deve ter boxcox ou não
+for (e in siglas) {
+  
+  if(e %in% comBC){ # se for estado no qual DEVE ser aplicado BOX-COX
+    
+    db.regr[[e]] <- db.regrXX.bc$Regr_106[[e]]
+    db.regr.std[[e]] <- db.regrXX.std.bc$Regr_106[[e]]
+    
+    step.models[[e]] <- regrXX.step.models.bc$Regr_106[[e]]
+    step.models.std[[e]] <- regrXX.step.models.std.bc$Regr_106[[e]]
+    
+    # SÓ UTILIZAR PARA PLOTS!
+    step.models.back[[e]] <- regrXX.step.models.bc.back$Regr_106[[e]] # back tranformed - só deve ser utilizado para plots!
+    step.models.std.back[[e]] <- regrXX.step.models.std.bc.back$Regr_106[[e]] # back tranformed
+    
+    } # FIM DO IF PARA OS COM BOX-COX
+  
+  if(e %in% semBC){ # se for estado no qual NÃO deve ser aplicado BOX-COX
+    
+    db.regr[[e]] <- db.regrXX$Regr_106[[e]]
+    db.regr.std[[e]] <- db.regrXX.std$Regr_106[[e]]
+    
+    step.models[[e]] <- regrXX.step.models$Regr_106[[e]]
+    step.models.std[[e]] <- regrXX.step.models.std$Regr_106[[e]]
+    
+    step.models.back[[e]] <- regrXX.step.models$Regr_106[[e]] # back tranformed - só deve ser utilizado para plots!
+    step.models.std.back[[e]] <- regrXX.step.models.std$Regr_106[[e]] # back tranformed
+    
+    } # FIM DO IF PARA OS SEM BOX-COX
+  
+  } # FIM DO FOR PARA OS ESTADOS
+
+
+
+# db.plot não é por estado!!!
+# mesma coisa para:
+# table.series
+# summ
+# coef
+# step.table
+
+# TEM QUE GERAR NOVAMENTE COM OS DADOS COMPILADOS!
+
+
+#regrXX.r2a.nSeries <- table.r2a.nSeries(regrXX.step.table)
+
+
+#db.regr$AC$y
+#db.regr$AM$y
+
+#step.models$AC$coefficients
+#step.models$AM$coefficients
+
+#regrXX.db.plot$Regr_106
+#regrXX.table.series$Regr_106
+
+
+```
+
+## Criando novos sumários e banco de dados para plot com base nos modelos selecionados
+```{r}
+
+# criando objetos para receber resultados das funções
+f.table.series <- list()
+f.table.series.std <- list()
+
+db.plot <- list()
+db.plot.std <- list()
+
+db.plot.pred <- list()
+db.plot.pred.std <- list()
+
+summ <- list()
+summ.std <- list()
+
+coef <- list()
+coef.std <- list()
+
+step.table <- list()
+step.table.std <- list()
+
+### CHAMANDO FUNÇÕES COM OS NOVOS BANCOS DE DADOS / MODELOS SELECIONADOS
+
+# função table.series - nome do objeto alterado - 'f' no ínicio para não ficar igual ao da função (f = final)
+(f.table.series <- table.series("Regr_106", step.models)) %>% 
+    data.table::fwrite(paste0(
+      saveFolder,"/Coefs_e_series_",Sys.Date(),".csv"
+    ))
+
+(f.table.series.std <- table.series("Regr_106", step.models.std)) %>% 
+    data.table::fwrite(paste0(
+      saveFolder,"/Coefs_e_series_STD_",Sys.Date(),".csv"
+    ))
+
+
+# banco de dados para plots
+db.plot <- create.db.plot(step.models.back) # utilizando modelos com valores back-transformed!
+
+db.plot.pred <- create.db.plot.ypred(db.regr)
+db.plot.pred.std <- create.db.plot.ypred(db.regr.std)
+
+# ERRADO ! VER COMO FAZER CERTO!
+#db.plot.std <- create.db.plot(step.models.std) # ERRADO! TEM QUE PADRONIZAR y e yhat juntos talvez
+
+
+
+
+summ <- table.summ(step.models)
+summ.std <- table.summ(step.models.std)
+
+  
+  
+  
+coef <- table.coef(summ)
+coef.std <- table.coef(summ.std)
+
+  
+  
+  
+step.table <- table.model("Regr_106", 
+                                        model = step.models, 
+                                        summ = summ, 
+                                        coef = coef,
+                          savefolder = saveFolder)
+
+step.table.std <- table.model("Regr_106", 
+                                        model = step.models.std, 
+                                        summ = summ.std, 
+                                        coef = coef.std,
+                              savefolder = saveFolder)
+
+
+###################################################
+
+    #table.series[[e]] <- regrXX.table.series$Regr_106[[e]]
+    #table.series.std[[e]] <- regrXX.table.series.std$Regr_106[[e]]
+    
+    #db.plot[[e]] <- regrXX.db.plot$Regr_106[[e]]
+    #db.plot.std[[e]] <- regrXX.db.plot.std$Regr_106[[e]]
+    
+    #summ[[e]] <- regrXX.step.summ$Regr_106[[e]]
+    #summ.std <- regrXX.step.std.summ$Regr_106[[e]]
+    
+    #coef[[e]] <- regrXX.step.coef$Regr_106[[e]]
+    #coef.std[[e]] <- regrXX.step.coef.std$Regr_106[[e]]
+    
+    #step.table[[e]] <- regrXX.step.table$Regr_106[[e]]
+    #step.table[[e]] <- regrXX.step.std.table$Regr_106[[e]]
+
+
+```
+
+## Analisando o banco de dados para plots
+```{r}
+
+db.plot
+
+summary(db.plot)
+
+summary(db.plot.pred.std, maxsum = 100)
+
+```
+
+
+######### PLOT DE Y X YHAT ORDENADO PELOS CLUSTERS #######
+
+```{r}
+
+## aumentar tamanho do nome do estado no facet (ver Tettra - strip text)
+
+db.plot.order <- merge(db.plot, state.clus, by.x = "Estado", by.y = "Sigla")
+
+plot.nrow <- 4
+plot.ncol <- 7
+
+facet.labels <- state.clus[,"Sigla"]
+  names(facet.labels) <- as.character(state.clus[,"StateOrder"])
+
+(db.plot.order %>% ggplot() +
+          geom_line(aes(x = x, 
+                        y = y),
+                    color = "coral",
+                    size = 0.8) +
+          geom_line(aes(x = x, 
+                        y = yhat),
+                    color = "cornflowerblue",
+                    size = 0.8) +
+            facet_wrap(~ StateOrder,
+                       labeller = labeller(StateOrder = facet.labels),
+                       scales = "free_y",
+                       ncol = plot.nrow,
+                       nrow = plot.ncol) +
+            theme_bw(base_size = 6.5) +
+          scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0),
+                strip.text = element_text(size = 8, face = "bold")) +
+          ggtitle(r) +
+    ylab("Total de área (ha) desmatada")
+  
+  ) %>% 
+
+  ggsave(
+    filename = paste0(
+    saveFolder, "/Plot_Y-Yhat_final_com_e_sem_BoxCox_", plot.ncol,"cols_",plot.nrow,"rows_",Sys.Date(),".png"
+    ),
+    units = "px",
+    width = 2000,
+    height = 2500)
+
+```
+
+
+# plot com cores diferentes das linhas por cluster
+```{r}
+
+## aumentar tamanho do nome do estado no facet (ver Tettra - strip text)
+
+db.plot.order <- merge(db.plot, state.clus, by.x = "Estado", by.y = "Sigla")
+
+plot.nrow <- 3
+plot.ncol <- 9
+
+facet.labels <- state.clus[,"Sigla"]
+  names(facet.labels) <- as.character(state.clus[,"StateOrder"])
+
+(db.plot.order %>% ggplot() +
+          geom_line(aes(x = x, 
+                        y = y,
+                        color = ClusOrder),
+                    size = 0.8) +
+          geom_line(aes(x = x, 
+                        y = yhat),
+                    color = "black",
+                    size = 0.6) +
+            facet_wrap(~ StateOrder,
+                       labeller = labeller(StateOrder = facet.labels),
+                       scales = "free_y",
+                       ncol = plot.nrow,
+                       nrow = plot.ncol) +
+            theme_bw(base_size = 6.5) +
+          scale_y_continuous(labels=function(x) format(x, big.mark = ".", decimal.mark = ",", scientific = FALSE)) +
+          theme(axis.text.x = element_text(angle = 90, vjust = 0),
+                strip.text = element_text(size = 8, face = "bold"),
+                legend.position = "bottom") +
+          ggtitle(r) +
+    ylab("Total de área (ha) desmatada")
+  
+  ) %>% 
+
+  ggsave(
+    filename = paste0(
+    saveFolder, "/Plot_Y-Yhat_final_Cores_ClusOrder_com_e_sem_BoxCox_", plot.ncol,"cols_",plot.nrow,"rows_",Sys.Date(),".png"
+    ),
+    units = "px",
+    width = 2000,
+    height = 2500)
+  
+  # extraindo as cores do gráfico plotado (7 cores)
+  seven.colors <- scales::hue_pal()(7)
+
+```
+
+
+
+######## BANCO DE DADOS DAS PREDITORAS ##############
+
+### CONFERIR SE PRECISA UTILIZAR O BANCO BACK-TRANSFORMED OU NÃO! RODAR DE NOVO PARA ATUALIZAR POR VIA DAS DÚVIDAS
+
+## Filtrando o banco de dados originais para obter apenas os dados das séries utilizadas no set 106 (db.pred) - exportação
+```{r}
+
+# criando vetor com o nome das séries
+series.pred <- as.character(unique(db.plot.pred$Serie_sigla_semUF))[2:14]
+
+# 'pred' é o objeto que recebe a importação do banco de dados .csv
+
+# filtrando apenas as séries preditoras do set 106
+db.pred <- pred %>% dplyr::filter(
+  Serie_sigla_semUF %in% series.pred
+) %>% dplyr::select(Estado_sigla, Granularidade, Serie_sigla, Serie_sigla_semUF, all_of(as.character(anos.total)))
+
+# apenas as séries nacionais e globais (ng)
+db.pred.ng <- db.pred %>% dplyr::filter(
+  Granularidade == "N" | Granularidade == "G"
+) %>% dplyr::select(Serie_sigla_semUF, all_of(as.character(anos.total)))
+
+# apenas as séries estaduais (e)
+db.pred.e <- db.pred %>% dplyr::filter(
+  Granularidade == "E" 
+)
+
+db.pred %>% data.table::fwrite(file = paste0(saveFolder, "/Banco_de_dados_pred_filtrado.csv"))
+
+```
+
+## Importando banco de dados (nac e glob) tratado no excel
+```{r}
+
+db.pred.ng.wide <- as.data.frame(data.table::fread(choose.files(multi = FALSE)))
+
+new.series.names <- names(db.pred.ng.wide)
+
+names(db.pred.ng.wide) <- c("Ano","Cambio_real","Preco_madeira","Ativ_global","Preco_carne","Preco_cafe","Preco_soja", "Preco_acucar","Invest_infra","PIB_agropec","Lei_crimes","Gini_index") 
+
+```
+
+## Novos nomes das séries (nac e glob) - vetor de strings
+```{r}
+
+new.series.ng.names <- names(db.pred.ng.wide)[-1]
+
+```
+
+
+
+## Transformando o banco de dados em wide, apenas com os dados para cálculos
+#### NÃO FINALIZADO - TRATADO NO EXCEL E IMPORTADO
+```{r}
+
+# transpondo os dados
+db.pred.wide <- as.data.frame(data.table::transpose(db.pred, make.names = "Serie_sigla_semUF", keep.names = "Ano"))
+
+# mudando o nome das séries
+
+db.pred.wide <-  as.data.frame(apply(db.pred.wide, MARGIN = 2, as.numeric))
+
+```
+
+
+
+##############################<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+## ORDENAR PELOS CLUSTERS!!!!!  <<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+##############################<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<
+
+## Plot dos modelos selecionados
+```{r}
+
+plot.yyhat("Com e sem Box-Cox",db.plot)
+
+plot.ypred(regr = "Com e sem BC", db.plot.pred.std)
+
+```
+
+## Selecionar GRUPOS de séries e plotar alguns gráficos com individualmente (não pode ser muitas páginas... como fazer?)
+## Talvez as que não são estaduais possam ser plotadas sem dividir por estado, com o desmatamento total do Brasil
+## As que forem estaduais (2 apenas) são plotadas com facet por estado - tudo com padronização
+## Tabela de estatísticas básicas das preditoras
+
+
+
+## Gerar tabela de correlação das preditoras com y para cada um dos estados
+## Acho que não tem jeito de gerar entre as variáveis preditoras para todos os estados... mas, talvez para as que ficam no final dê
+## Utilizar funções já criadas - ver script 04? (e chamadas no 05?)
+
+## Gerar scatter plots com os y vs yhat, e histogramas com a distribuição dos erros com curva teórica
+
+## Gráfico utilizado pelo Fávero com os coeficientes ue ficam e a distribuição com intervalo de confiança
+
+
+
+
+
+
+
+
+
+#################################################################################################################
+
+## Pegando os modelos para cada um dos casos (com e sem BC) em um único objeto
+```{r}
+
+#Set 106 como final - se por acaso mudar, alterar o número do Regr_XX
+
+# Objeto para armazenar o banco de dados final
+step.models <- list()
+
+# Para cada estado testa se está no vetor que deve ter boxcox ou não
+for (e in siglas) {
+  if(e %in% comBC){
+    step.models[[e]] <- regrXX.step.models.bc$Regr_106[[e]]
+  }
+  if(e %in% semBC){
+    step.models[[e]] <- regrXX.step.models$Regr_106[[e]]
+  }
+}
+
+step.models$AC$coefficients
+step.models$AM$coefficients
+
+
+```
+
